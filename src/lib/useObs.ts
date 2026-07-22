@@ -88,7 +88,13 @@ export function useObs() {
         await refresh()
       } catch (e) {
         setStatus('error')
-        setError(e instanceof Error ? e.message : 'Could not connect to OBS')
+        // Connection failures often reject with an empty message — fall back
+        // to something actionable instead of rendering nothing.
+        const raw = e instanceof Error ? e.message.trim() : ''
+        setError(
+          raw ||
+            `Could not reach OBS at ${url}. Make sure OBS is running and the WebSocket server is enabled (Tools → WebSocket Server Settings), then try again.`,
+        )
       }
     },
     [obs, refresh],

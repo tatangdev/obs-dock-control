@@ -161,7 +161,11 @@ export default function Dock() {
               placeholder="leave empty if auth is disabled"
             />
           </Field>
-          {obsStatus === 'error' && <p className="text-sm text-red-400">{obsError}</p>}
+          {obsStatus === 'error' && (
+            <div className="rounded-lg border border-red-800/60 bg-red-950/40 px-3 py-2 text-sm text-red-400">
+              {obsError ?? 'Could not connect to OBS.'}
+            </div>
+          )}
           <button
             disabled={obsStatus === 'connecting'}
             className="w-full rounded-lg bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
