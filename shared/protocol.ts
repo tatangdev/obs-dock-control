@@ -20,6 +20,7 @@ export type ClientMessage =
   | { type: 'join'; code: string; pin: string }
   | { type: 'state'; state: ObsState }
   | { type: 'command'; request: string; params?: Record<string, unknown> }
+  | { type: 'command-error'; request: string; message: string }
   | { type: 'end' }
 
 export type ServerMessage =
@@ -28,6 +29,7 @@ export type ServerMessage =
   | { type: 'joined'; name: string; state: ObsState | null; dockOnline: boolean }
   | { type: 'state'; state: ObsState }
   | { type: 'command'; request: string; params?: Record<string, unknown> }
+  | { type: 'command-error'; request: string; message: string }
   | { type: 'peers'; count: number }
   | { type: 'dock-status'; online: boolean }
   | { type: 'ended' }

@@ -7,6 +7,13 @@ export type ObsStatus = 'idle' | 'connecting' | 'connected' | 'error'
 
 export type ObsCall = (request: string, params?: Record<string, unknown>) => Promise<void>
 
+export interface CallError {
+  request: string
+  message: string
+  /** Monotonic id so identical back-to-back errors still retrigger effects */
+  id: number
+}
+
 // Any of these events invalidates our snapshot, so we just rebuild it.
 const REFRESH_EVENTS: (keyof OBSEventTypes)[] = [
   'CurrentProgramSceneChanged',
@@ -62,7 +69,9 @@ export function useObs() {
   const [status, setStatus] = useState<ObsStatus>('idle')
   const [error, setError] = useState<string | null>(null)
   const [state, setState] = useState<ObsState | null>(null)
+  const [callError, setCallError] = useState<CallError | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const callErrorId = useRef(0)
 
   const refresh = useCallback(async () => {
     try {
@@ -106,10 +115,15 @@ export function useObs() {
         .call(request as never, params as never)
         .then(() => scheduleRefresh())
         .catch((e: unknown) => {
-          console.error(`OBS ${request} failed:`, e instanceof Error ? e.message : e)
+          const raw = e instanceof Error ? e.message.trim() : ''
+          const message = raw || (status === 'connected' ? 'Request failed' : 'Not connected to OBS')
+          console.error(`OBS ${request} failed:`, message)
+          setCallError({ request, message, id: ++callErrorId.current })
         }),
-    [obs, scheduleRefresh],
+    [obs, scheduleRefresh, status],
   )
+
+  const clearCallError = useCallback(() => setCallError(null), [])
 
   useEffect(() => {
     const onEvent = (): void => scheduleRefresh()
@@ -128,5 +142,5 @@ export function useObs() {
     }
   }, [obs, scheduleRefresh])
 
-  return { status, error, state, connect, call }
+  return { status, error, state, connect, call, callError, clearCallError }
 }

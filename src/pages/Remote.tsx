@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from 'react'
 import { connectRelay } from '../lib/relay'
 import type { RelayHandle } from '../lib/relay'
 import ControlPanel from '../components/ControlPanel'
+import Toast from '../components/Toast'
 import type { ObsState } from '../../shared/protocol'
 
 type Phase = 'form' | 'joining' | 'live' | 'ended'
@@ -16,11 +17,20 @@ export default function Remote() {
   const [state, setState] = useState<ObsState | null>(null)
   const [dockOnline, setDockOnline] = useState(true)
   const [relayDown, setRelayDown] = useState(false)
+  const [toast, setToast] = useState<{ text: string; id: number } | null>(null)
 
   const relayRef = useRef<RelayHandle | null>(null)
   const phaseRef = useRef<Phase>(phase)
   phaseRef.current = phase
   const credsRef = useRef<{ code: string; pin: string } | null>(null)
+  const toastId = useRef(0)
+
+  // Auto-dismiss command failure notices
+  useEffect(() => {
+    if (!toast) return
+    const timer = setTimeout(() => setToast(null), 5000)
+    return () => clearTimeout(timer)
+  }, [toast])
 
   function teardown(): void {
     relayRef.current?.close()
@@ -46,6 +56,7 @@ export default function Remote() {
             setState(msg.state)
             setDockOnline(msg.dockOnline)
             setRelayDown(false)
+            setError(null)
             localStorage.setItem('remote-code', credsRef.current?.code ?? '')
             setPhase('live')
             break
@@ -54,6 +65,9 @@ export default function Remote() {
             break
           case 'dock-status':
             setDockOnline(msg.online)
+            break
+          case 'command-error':
+            setToast({ text: `${msg.request} failed: ${msg.message}`, id: ++toastId.current })
             break
           case 'ended':
             teardown()
@@ -74,7 +88,9 @@ export default function Remote() {
         }
       },
       onStatus: (status) => {
-        if (status === 'closed' && phaseRef.current === 'live') setRelayDown(true)
+        if (status !== 'closed') return
+        if (phaseRef.current === 'live') setRelayDown(true)
+        else if (phaseRef.current === 'joining') setError('Cannot reach the server — retrying…')
       },
     })
   }
@@ -166,6 +182,7 @@ export default function Remote() {
       ) : (
         <p className="text-sm text-zinc-400">Waiting for the dock to send its first state…</p>
       )}
+      {toast && <Toast message={toast.text} />}
     </div>
   )
 }

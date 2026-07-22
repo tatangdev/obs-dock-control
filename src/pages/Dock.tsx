@@ -4,6 +4,7 @@ import { useObs } from '../lib/useObs'
 import { connectRelay } from '../lib/relay'
 import type { RelayHandle } from '../lib/relay'
 import ControlPanel from '../components/ControlPanel'
+import Toast from '../components/Toast'
 import type { ObsState } from '../../shared/protocol'
 
 interface StoredSession {
@@ -23,7 +24,7 @@ function loadStoredSession(): StoredSession | null {
 type SessionStatus = 'none' | 'connecting' | 'live' | 'reconnecting'
 
 export default function Dock() {
-  const { status: obsStatus, error: obsError, state, connect, call } = useObs()
+  const { status: obsStatus, error: obsError, state, connect, call, callError, clearCallError } = useObs()
 
   const [obsUrl, setObsUrl] = useState(() => localStorage.getItem('obs-url') ?? 'ws://localhost:4455')
   const [obsPassword, setObsPassword] = useState(() => localStorage.getItem('obs-password') ?? '')
@@ -98,7 +99,12 @@ export default function Dock() {
         }
       },
       onStatus: (status) => {
-        if (status === 'closed' && liveRef.current) setSessionStatus('reconnecting')
+        if (status === 'open') {
+          setRelayError(null)
+        } else if (status === 'closed') {
+          if (liveRef.current) setSessionStatus('reconnecting')
+          else setRelayError('Cannot reach the server — retrying…')
+        }
       },
     })
   }, [])
@@ -116,6 +122,17 @@ export default function Dock() {
   }, [state, sessionStatus])
 
   useEffect(() => () => relayRef.current?.close(), [])
+
+  // A failed OBS command: show it here and fan it out to the remotes, so the
+  // person who pressed the button gets feedback wherever they are.
+  useEffect(() => {
+    if (!callError) return
+    relayRef.current?.send({ type: 'command-error', request: callError.request, message: callError.message })
+    const timer = setTimeout(clearCallError, 5000)
+    return () => clearTimeout(timer)
+  }, [callError, clearCallError])
+
+  const toast = callError ? <Toast message={`${callError.request} failed: ${callError.message}`} /> : null
 
   function connectObs(e: FormEvent<HTMLFormElement>): void {
     e.preventDefault()
@@ -148,6 +165,12 @@ export default function Dock() {
   if (obsStatus !== 'connected') {
     return (
       <Shell title="Connect to OBS">
+        {code !== null && (
+          <div className="mb-3 rounded-lg border border-amber-700/50 bg-amber-950/50 px-3 py-2 text-sm text-amber-400">
+            Session <span className="font-mono font-semibold">{code}</span> is still active — reconnect to OBS to keep
+            controlling it.
+          </div>
+        )}
         <form onSubmit={connectObs} className="space-y-3">
           <Field label="OBS WebSocket URL">
             <input value={obsUrl} onChange={(e) => setObsUrl(e.target.value)} className={inputCls} />
@@ -173,6 +196,7 @@ export default function Dock() {
             {obsStatus === 'connecting' ? 'Connecting…' : 'Connect'}
           </button>
         </form>
+        {toast}
       </Shell>
     )
   }
@@ -228,6 +252,7 @@ export default function Dock() {
         </div>
       </div>
       {state && <ControlPanel state={state} send={call} />}
+      {toast}
     </div>
   )
 }

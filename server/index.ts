@@ -29,22 +29,33 @@ const MIME: Record<string, string> = {
 // Static file serving (production: serves the built frontend with SPA fallback)
 // ---------------------------------------------------------------------------
 const server = http.createServer((req, res) => {
-  const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
-  let filePath = path.normalize(path.join(DIST, url.pathname))
-  if (!filePath.startsWith(DIST)) {
-    res.writeHead(403).end()
-    return
+  try {
+    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
+    let filePath = path.normalize(path.join(DIST, decodeURIComponent(url.pathname)))
+    if (!filePath.startsWith(DIST)) {
+      res.writeHead(403).end()
+      return
+    }
+    if (!existsSync(filePath) || statSync(filePath).isDirectory()) {
+      filePath = path.join(DIST, 'index.html')
+    }
+    if (!existsSync(filePath)) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' })
+      res.end('Frontend not built. Run `npm run build` first, or use `npm run dev`.')
+      return
+    }
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath)] ?? 'application/octet-stream' })
+    const stream = createReadStream(filePath)
+    stream.on('error', (e) => {
+      console.error(`failed streaming ${filePath}:`, e.message)
+      res.destroy()
+    })
+    stream.pipe(res)
+  } catch (e) {
+    console.error('http handler error:', e instanceof Error ? e.message : e)
+    if (!res.headersSent) res.writeHead(500, { 'Content-Type': 'text/plain' })
+    res.end('Internal server error')
   }
-  if (!existsSync(filePath) || statSync(filePath).isDirectory()) {
-    filePath = path.join(DIST, 'index.html')
-  }
-  if (!existsSync(filePath)) {
-    res.writeHead(404, { 'Content-Type': 'text/plain' })
-    res.end('Frontend not built. Run `npm run build` first, or use `npm run dev`.')
-    return
-  }
-  res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath)] ?? 'application/octet-stream' })
-  createReadStream(filePath).pipe(res)
 })
 
 // ---------------------------------------------------------------------------
@@ -90,14 +101,20 @@ function genCode(): string {
 }
 
 function persist(): void {
-  const records: PersistedSession[] = [...sessions.values()].map(({ code, name, pin, token }) => ({
-    code,
-    name,
-    pin,
-    token,
-  }))
-  mkdirSync(path.dirname(DATA_FILE), { recursive: true })
-  writeFileSync(DATA_FILE, JSON.stringify(records))
+  try {
+    const records: PersistedSession[] = [...sessions.values()].map(({ code, name, pin, token }) => ({
+      code,
+      name,
+      pin,
+      token,
+    }))
+    mkdirSync(path.dirname(DATA_FILE), { recursive: true })
+    writeFileSync(DATA_FILE, JSON.stringify(records))
+  } catch (e) {
+    // Persistence is best-effort: losing restart-survival must never take
+    // down live sessions.
+    console.error('could not persist sessions:', e instanceof Error ? e.message : e)
+  }
 }
 
 function restore(): void {
@@ -135,6 +152,10 @@ function endSession(session: Session): void {
 function handleMessage(ws: WebSocket, m: SocketMeta, msg: ClientMessage): void {
   switch (msg.type) {
     case 'create': {
+      if (m.session) {
+        send(ws, { type: 'error', message: 'This connection is already in a session' })
+        return
+      }
       const pin = String(msg.pin)
       if (!/^\d{4,8}$/.test(pin)) {
         send(ws, { type: 'error', message: 'PIN must be 4-8 digits' })
@@ -186,6 +207,10 @@ function handleMessage(ws: WebSocket, m: SocketMeta, msg: ClientMessage): void {
     }
 
     case 'join': {
+      if (m.session) {
+        send(ws, { type: 'error', message: 'This connection is already in a session' })
+        return
+      }
       const session = sessions.get(String(msg.code).toUpperCase().trim())
       if (!session) {
         send(ws, { type: 'error', message: 'Session not found' })
@@ -212,7 +237,19 @@ function handleMessage(ws: WebSocket, m: SocketMeta, msg: ClientMessage): void {
 
     case 'command': {
       if (m.role !== 'remote' || !m.session) return
+      if (!m.session.dock) {
+        send(ws, { type: 'command-error', request: msg.request, message: 'The dock is offline' })
+        return
+      }
       send(m.session.dock, { type: 'command', request: msg.request, params: msg.params })
+      break
+    }
+
+    case 'command-error': {
+      // The dock reports a command that OBS rejected — fan it out so remotes
+      // get feedback instead of a button that silently does nothing.
+      if (m.role !== 'dock' || !m.session) return
+      broadcast(m.session, { type: 'command-error', request: String(msg.request), message: String(msg.message) })
       break
     }
 
@@ -276,6 +313,15 @@ setInterval(() => {
     ws.ping()
   }
 }, 30_000)
+
+wss.on('error', (e) => {
+  console.error('websocket server error:', e.message)
+})
+
+server.on('error', (e) => {
+  console.error('server error:', e.message)
+  process.exit(1)
+})
 
 restore()
 server.listen(PORT, () => {
