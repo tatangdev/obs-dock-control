@@ -1,0 +1,9 @@
+# Used only if deploying with Nixpacks instead of the Dockerfile.
+# Forces Node 22 (Tailwind v4 and react-router 7 need >= 20) and runs the
+# relay server — this app is a Node service, not a static site.
+
+[phases.setup]
+nixPkgs = ["nodejs_22"]
+
+[start]
+cmd = "npm start"
