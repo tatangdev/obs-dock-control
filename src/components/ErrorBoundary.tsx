@@ -26,13 +26,13 @@ export default class ErrorBoundary extends Component<Props, State> {
   override render(): ReactNode {
     if (!this.state.error) return this.props.children
     return (
-      <div className="mx-auto max-w-sm p-4 pt-10">
+      <div className="mx-auto flex min-h-full max-w-sm flex-col justify-center p-4">
         <h1 className="mb-2 text-lg font-semibold">Something went wrong</h1>
-        <p className="mb-1 text-sm text-zinc-400">The app hit an unexpected error and stopped rendering.</p>
-        <p className="mb-4 break-all font-mono text-xs text-red-400">{this.state.error.message}</p>
+        <p className="mb-1 text-sm text-ios-label2">The app hit an unexpected error and stopped rendering.</p>
+        <p className="mb-4 break-all font-mono text-xs text-ios-red">{this.state.error.message}</p>
         <button
           onClick={() => location.reload()}
-          className="w-full rounded-lg bg-zinc-800 px-3 py-2.5 text-sm font-semibold text-zinc-100 hover:bg-zinc-700"
+          className="w-full rounded-xl bg-ios-fill active:scale-[0.98] transition-all duration-200 ease-out px-3 py-2.5 text-sm font-semibold text-white hover:bg-ios-fill2"
         >
           Reload
         </button>

@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import type { FormEvent, ReactNode } from 'react'
+import type { FormEvent } from 'react'
 import { connectRelay } from '../lib/relay'
 import type { RelayHandle } from '../lib/relay'
 import ControlPanel from '../components/ControlPanel'
+import LayerPanel from '../components/LayerPanel'
+import Shell from '../components/Shell'
 import Toast from '../components/Toast'
 import type { ObsState } from '../../shared/protocol'
+import { isSetupReady } from '../lib/scenes'
 
 type Phase = 'form' | 'joining' | 'live' | 'ended'
 
@@ -16,6 +19,7 @@ export default function Remote() {
   const [sessionName, setSessionName] = useState('')
   const [state, setState] = useState<ObsState | null>(null)
   const [dockOnline, setDockOnline] = useState(true)
+  const [obsConnected, setObsConnected] = useState(true)
   const [relayDown, setRelayDown] = useState(false)
   const [toast, setToast] = useState<{ text: string; id: number } | null>(null)
 
@@ -55,6 +59,7 @@ export default function Remote() {
             setSessionName(msg.name)
             setState(msg.state)
             setDockOnline(msg.dockOnline)
+            setObsConnected(msg.obsConnected)
             setRelayDown(false)
             setError(null)
             localStorage.setItem('remote-code', credsRef.current?.code ?? '')
@@ -65,6 +70,9 @@ export default function Remote() {
             break
           case 'dock-status':
             setDockOnline(msg.online)
+            break
+          case 'obs-status':
+            setObsConnected(msg.connected)
             break
           case 'command-error':
             setToast({ text: `${msg.request} failed: ${msg.message}`, id: ++toastId.current })
@@ -104,13 +112,13 @@ export default function Remote() {
   if (phase === 'ended') {
     return (
       <Shell title="Session ended">
-        <p className="mb-4 text-sm text-zinc-400">The session was closed or expired.</p>
+        <p className="mb-4 text-sm text-ios-label2">The session was closed or expired.</p>
         <button
           onClick={() => {
             setState(null)
             setPhase('form')
           }}
-          className="w-full rounded-lg bg-sky-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-sky-500"
+          className="w-full rounded-xl bg-ios-blue active:scale-[0.98] transition-all duration-200 ease-out px-3 py-2.5 text-sm font-semibold text-white hover:bg-ios-blue-light"
         >
           Join again
         </button>
@@ -120,10 +128,10 @@ export default function Remote() {
 
   if (phase !== 'live') {
     return (
-      <Shell title="Join a session">
+      <Shell title="Join a session" subtitle="The code and PIN are shown in the dock on the streaming PC.">
         <form onSubmit={join} className="space-y-3">
           <label className="block">
-            <span className="mb-1 block text-xs text-zinc-400">Session code</span>
+            <span className="mb-1 block text-xs text-ios-label2">Session code</span>
             <input
               value={code}
               onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
@@ -133,7 +141,7 @@ export default function Remote() {
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs text-zinc-400">PIN</span>
+            <span className="mb-1 block text-xs text-ios-label2">PIN</span>
             <input
               value={pin}
               onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
@@ -142,10 +150,10 @@ export default function Remote() {
               placeholder="1234"
             />
           </label>
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && <p className="text-sm text-ios-red">{error}</p>}
           <button
             disabled={code.length < 6 || pin.length < 4 || phase === 'joining'}
-            className="w-full rounded-lg bg-sky-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-sky-500 disabled:opacity-50"
+            className="w-full rounded-xl bg-ios-blue active:scale-[0.98] transition-all duration-200 ease-out px-3 py-2.5 text-sm font-semibold text-white hover:bg-ios-blue-light disabled:opacity-50"
           >
             {phase === 'joining' ? 'Joining…' : 'Join'}
           </button>
@@ -154,33 +162,51 @@ export default function Remote() {
     )
   }
 
-  const blocked = relayDown || !dockOnline
+  const blocked = relayDown || !dockOnline || !obsConnected
+  const notice = relayDown
+    ? 'Connection lost — reconnecting…'
+    : !dockOnline
+      ? 'The dock is offline — waiting for it to come back.'
+      : !obsConnected
+        ? 'OBS is disconnected on the streaming PC — controls resume when it comes back.'
+        : null
 
   return (
-    <div className="mx-auto max-w-lg p-4">
-      {relayDown && (
-        <div className="mb-3 rounded-lg border border-amber-700/50 bg-amber-950/50 px-3 py-2 text-sm text-amber-400">
-          Connection lost — reconnecting…
+    <div className="mx-auto max-w-3xl p-4">
+      {notice && (
+        <div className="mb-3 animate-fade-in rounded-xl border border-transparent bg-ios-orange/15 px-3 py-2 text-sm text-ios-orange">
+          {notice}
         </div>
       )}
-      {!relayDown && !dockOnline && (
-        <div className="mb-3 rounded-lg border border-amber-700/50 bg-amber-950/50 px-3 py-2 text-sm text-amber-400">
-          The dock is offline — waiting for it to come back.
-        </div>
-      )}
-      <div className="mb-4 flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
+      <div className="mb-4 flex items-center justify-between rounded-2xl border border-transparent bg-ios-card px-4 py-3">
         <div>
-          <div className="text-xs text-zinc-400">Connected to</div>
+          <div className="text-xs text-ios-label2">Connected to</div>
           <div className="font-semibold">{sessionName}</div>
         </div>
-        <span className="rounded-full bg-sky-600/20 px-2.5 py-1 text-xs font-medium text-sky-400">Remote</span>
+        <div className="flex items-center gap-2">
+          {state !== null && !isSetupReady(state.scenes) && (
+            <span className="animate-fade-in rounded-full bg-ios-orange/15 px-2.5 py-1 text-xs font-medium text-ios-orange">
+              OBS setup needed
+            </span>
+          )}
+          <span className="rounded-full bg-ios-fill px-2.5 py-1 text-xs font-medium text-ios-label2">Remote</span>
+        </div>
       </div>
       {state ? (
-        <div className={blocked ? 'pointer-events-none opacity-50' : undefined}>
-          <ControlPanel state={state} send={send} />
+        <div className={`flex items-start gap-4 ${blocked ? 'pointer-events-none opacity-50' : ''}`}>
+          <div className="min-w-0 flex-1">
+            <ControlPanel state={state} send={send} />
+          </div>
+          <LayerPanel
+            layers={state.layers}
+            runningText={state.runningText}
+            currentScene={state.currentScene}
+            scenes={state.scenes}
+            send={send}
+          />
         </div>
       ) : (
-        <p className="text-sm text-zinc-400">Waiting for the dock to send its first state…</p>
+        <p className="text-sm text-ios-label2">Waiting for the dock to send its first state…</p>
       )}
       {toast && <Toast message={toast.text} />}
     </div>
@@ -188,13 +214,4 @@ export default function Remote() {
 }
 
 const inputCls =
-  'w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500'
-
-function Shell({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="mx-auto max-w-sm p-4 pt-10">
-      <h1 className="mb-4 text-lg font-semibold">{title}</h1>
-      {children}
-    </div>
-  )
-}
+  'w-full rounded-xl border border-transparent bg-ios-fill px-3 py-2 text-sm text-white outline-none focus:border-ios-blue'

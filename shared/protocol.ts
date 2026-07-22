@@ -1,9 +1,20 @@
 // Wire protocol shared by the relay server and both frontend modes.
 
-export interface AudioInput {
+export type MediaPlayState = 'playing' | 'paused' | 'stopped' | 'ended' | 'none'
+
+export interface MediaStatus {
+  /** Full path of the loaded file, or null when nothing is loaded */
+  file: string | null
+  state: MediaPlayState
+  cursorMs: number
+  durationMs: number
+}
+
+/** A global overlay layer (scene item of the OVERLAY scene), top-most first */
+export interface LayerInfo {
+  id: number
   name: string
-  muted: boolean
-  volumeDb: number
+  enabled: boolean
 }
 
 export interface ObsState {
@@ -11,7 +22,11 @@ export interface ObsState {
   scenes: string[]
   streaming: boolean
   recording: boolean
-  audio: AudioInput[]
+  layers: LayerInfo[]
+  /** Current content of the running-text overlay, null if the input is missing */
+  runningText: string | null
+  /** null when the media input doesn't exist (setup incomplete) */
+  media: MediaStatus | null
 }
 
 export type ClientMessage =
@@ -19,6 +34,7 @@ export type ClientMessage =
   | { type: 'resume'; code: string; token: string }
   | { type: 'join'; code: string; pin: string }
   | { type: 'state'; state: ObsState }
+  | { type: 'obs-status'; connected: boolean }
   | { type: 'command'; request: string; params?: Record<string, unknown> }
   | { type: 'command-error'; request: string; message: string }
   | { type: 'end' }
@@ -26,8 +42,9 @@ export type ClientMessage =
 export type ServerMessage =
   | { type: 'created'; code: string; token: string }
   | { type: 'resumed'; code: string; name: string }
-  | { type: 'joined'; name: string; state: ObsState | null; dockOnline: boolean }
+  | { type: 'joined'; name: string; state: ObsState | null; dockOnline: boolean; obsConnected: boolean }
   | { type: 'state'; state: ObsState }
+  | { type: 'obs-status'; connected: boolean }
   | { type: 'command'; request: string; params?: Record<string, unknown> }
   | { type: 'command-error'; request: string; message: string }
   | { type: 'peers'; count: number }

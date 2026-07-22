@@ -10,6 +10,7 @@
     "dev": "concurrently -n web,relay -c cyan,magenta \"vite\" \"tsx watch server/index.ts\"",
     "build": "npm run typecheck && vite build",
     "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.node.json",
+    "gen:collection": "tsx scripts/gen-collection.ts",
     "start": "tsx server/index.ts",
     "preview": "vite preview"
   },

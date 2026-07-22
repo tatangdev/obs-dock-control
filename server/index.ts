@@ -13,6 +13,10 @@ const PORT = Number(process.env.PORT ?? 8787)
 // How long a session survives without its dock (covers reloads, network blips,
 // and relay restarts) before it is ended for good.
 const GRACE_MS = Number(process.env.SESSION_GRACE_MS ?? 10 * 60_000)
+// Backstop against session-spam filling memory and the data file
+const MAX_SESSIONS = Number(process.env.MAX_SESSIONS ?? 200)
+// Wrong-PIN attempts allowed per connection before it is dropped
+const MAX_PIN_ATTEMPTS = 5
 
 const MIME: Record<string, string> = {
   '.html': 'text/html',
@@ -72,6 +76,7 @@ interface Session {
   dock: WebSocket | null
   remotes: Set<WebSocket>
   state: ObsState | null
+  obsConnected: boolean
   expireTimer: NodeJS.Timeout | null
 }
 
@@ -86,6 +91,7 @@ interface SocketMeta {
   isAlive: boolean
   role: 'dock' | 'remote' | null
   session: Session | null
+  pinFailures: number
 }
 
 const sessions = new Map<string, Session>()
@@ -122,7 +128,14 @@ function restore(): void {
   try {
     const records = JSON.parse(readFileSync(DATA_FILE, 'utf8')) as PersistedSession[]
     for (const record of records) {
-      const session: Session = { ...record, dock: null, remotes: new Set(), state: null, expireTimer: null }
+      const session: Session = {
+        ...record,
+        dock: null,
+        remotes: new Set(),
+        state: null,
+        obsConnected: true,
+        expireTimer: null,
+      }
       session.expireTimer = setTimeout(() => endSession(session), GRACE_MS)
       sessions.set(session.code, session)
     }
@@ -156,6 +169,10 @@ function handleMessage(ws: WebSocket, m: SocketMeta, msg: ClientMessage): void {
         send(ws, { type: 'error', message: 'This connection is already in a session' })
         return
       }
+      if (sessions.size >= MAX_SESSIONS) {
+        send(ws, { type: 'error', message: 'The server is full — try again later' })
+        return
+      }
       const pin = String(msg.pin)
       if (!/^\d{4,8}$/.test(pin)) {
         send(ws, { type: 'error', message: 'PIN must be 4-8 digits' })
@@ -169,6 +186,7 @@ function handleMessage(ws: WebSocket, m: SocketMeta, msg: ClientMessage): void {
         dock: ws,
         remotes: new Set(),
         state: null,
+        obsConnected: true,
         expireTimer: null,
       }
       sessions.set(session.code, session)
@@ -217,13 +235,21 @@ function handleMessage(ws: WebSocket, m: SocketMeta, msg: ClientMessage): void {
         return
       }
       if (session.pin !== String(msg.pin)) {
+        m.pinFailures += 1
         send(ws, { type: 'error', message: 'Wrong PIN' })
+        if (m.pinFailures >= MAX_PIN_ATTEMPTS) ws.close(4001, 'too many PIN attempts')
         return
       }
       session.remotes.add(ws)
       m.role = 'remote'
       m.session = session
-      send(ws, { type: 'joined', name: session.name, state: session.state, dockOnline: session.dock !== null })
+      send(ws, {
+        type: 'joined',
+        name: session.name,
+        state: session.state,
+        dockOnline: session.dock !== null,
+        obsConnected: session.obsConnected,
+      })
       send(session.dock, { type: 'peers', count: session.remotes.size })
       break
     }
@@ -232,6 +258,15 @@ function handleMessage(ws: WebSocket, m: SocketMeta, msg: ClientMessage): void {
       if (m.role !== 'dock' || !m.session) return
       m.session.state = msg.state
       broadcast(m.session, { type: 'state', state: msg.state })
+      break
+    }
+
+    case 'obs-status': {
+      if (m.role !== 'dock' || !m.session) return
+      const connected = Boolean(msg.connected)
+      if (m.session.obsConnected === connected) return
+      m.session.obsConnected = connected
+      broadcast(m.session, { type: 'obs-status', connected })
       break
     }
 
@@ -263,10 +298,12 @@ function handleMessage(ws: WebSocket, m: SocketMeta, msg: ClientMessage): void {
   }
 }
 
-const wss = new WebSocketServer({ server, path: '/ws' })
+// States are a few KB — a generous cap that still stops abusive frames from
+// being stored per-session and rebroadcast to every remote.
+const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 256 * 1024 })
 
 wss.on('connection', (ws) => {
-  const m: SocketMeta = { isAlive: true, role: null, session: null }
+  const m: SocketMeta = { isAlive: true, role: null, session: null, pinFailures: 0 }
   meta.set(ws, m)
 
   ws.on('pong', () => {

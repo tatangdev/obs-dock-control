@@ -1,9 +1,56 @@
 @import "tailwindcss";
 
+@theme {
+  /* iOS dark mode system palette */
+  --color-ios-card: #1c1c1e; /* secondarySystemGroupedBackground */
+  --color-ios-fill: #2c2c2e; /* tertiarySystemFill */
+  --color-ios-fill2: #3a3a3c; /* quaternary fill / pressed */
+  --color-ios-sep: #38383a; /* separator */
+  --color-ios-label2: rgb(235 235 245 / 0.6); /* secondaryLabel */
+  --color-ios-label3: rgb(235 235 245 / 0.3); /* tertiaryLabel */
+  --color-ios-blue: #0a84ff; /* systemBlue (dark) */
+  --color-ios-blue-light: #409cff;
+  --color-ios-green: #30d158; /* systemGreen */
+  --color-ios-red: #ff453a; /* systemRed */
+  --color-ios-orange: #ff9f0a; /* systemOrange */
+  --color-ios-purple: #bf5af2; /* systemPurple */
+
+  --animate-fade-in: fade-in 150ms ease-out;
+  --animate-pop-in: pop-in 200ms ease-out;
+  --animate-rise-in: rise-in 250ms ease-out;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+  }
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+  }
+}
+
 body {
-  @apply bg-zinc-950 text-zinc-100 antialiased;
+  @apply bg-black text-white antialiased;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Every interactive element eases between states by default */
+button,
+input,
+a {
+  @apply transition-colors duration-200 ease-out;
 }
 
 input[type="range"] {
-  @apply accent-emerald-500;
+  @apply accent-ios-blue;
 }

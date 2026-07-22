@@ -17,5 +17,5 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["server", "shared", "vite.config.ts"]
+  "include": ["server", "shared", "scripts", "src/lib/overlay.ts", "vite.config.ts"]
 }
