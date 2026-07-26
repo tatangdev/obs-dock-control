@@ -3,6 +3,8 @@ import type { ReactNode } from 'react'
 import type { OBSEventTypes } from 'obs-websocket-js'
 import type { ObsQuery, ObsSubscribe } from '../lib/useObs'
 import { COLLECTION_NAME, REQUIRED_SCENES, isSetupReady } from '../lib/scenes'
+import { CAMERA_DEVICE_PROP, COLLECTION_FILE, PLATFORMS, PLATFORM_LABEL, platformFromObs } from '../lib/platform'
+import type { Platform } from '../lib/platform'
 
 const PLUGINS = [
   { name: 'Source Clone', url: 'https://obsproject.com/forum/resources/source-clone.1632/', key: 'sourceClone' },
@@ -27,6 +29,8 @@ interface Checks {
   collections: string[]
   currentCollection: string
   scenesPresent: number
+  /** OS of the machine running OBS — decides which collection file fits */
+  platform: Platform | null
 }
 
 interface SetupPanelProps {
@@ -46,10 +50,11 @@ export default function SetupPanel({ query, subscribe, scenes, onClose }: SetupP
 
   const runChecks = useCallback(async () => {
     try {
-      const [kinds, transitions, collections] = await Promise.all([
+      const [kinds, transitions, collections, version] = await Promise.all([
         query<{ inputKinds: string[] }>('GetInputKindList'),
         query<{ transitions: { transitionKind: string }[] }>('GetSceneTransitionList'),
         query<{ currentSceneCollectionName: string; sceneCollections: string[] }>('GetSceneCollectionList'),
+        query<{ platform: string }>('GetVersion'),
       ])
       let masks: boolean | null = null
       try {
@@ -65,6 +70,7 @@ export default function SetupPanel({ query, subscribe, scenes, onClose }: SetupP
         collections: collections.sceneCollections,
         currentCollection: collections.currentSceneCollectionName,
         scenesPresent: REQUIRED_SCENES.filter((name) => scenes.includes(name)).length,
+        platform: platformFromObs(version.platform),
       })
       setError(null)
     } catch (e) {
@@ -137,15 +143,9 @@ export default function SetupPanel({ query, subscribe, scenes, onClose }: SetupP
                 <div className="rounded-xl border border-transparent bg-ios-green/15 px-3 py-2 text-base sm:text-sm text-ios-green">
                   All {REQUIRED_SCENES.length} scenes are ready.
                 </div>
-                <div className="flex items-center justify-between gap-2 px-1 text-sm sm:text-xs">
-                  <span className="text-ios-label3">Setting up another machine?</span>
-                  <a
-                    href="/scene-collection.json"
-                    download="dock-control-collection.json"
-                    className="shrink-0 text-ios-blue transition-colors hover:text-ios-blue-light"
-                  >
-                    Download collection file
-                  </a>
+                <div className="space-y-1 px-1">
+                  <span className="text-sm sm:text-xs text-ios-label3">Setting up another machine?</span>
+                  <CollectionDownload platform={checks.platform} compact />
                 </div>
               </div>
             ) : (
@@ -187,13 +187,7 @@ export default function SetupPanel({ query, subscribe, scenes, onClose }: SetupP
                 </Step>
 
                 <Step n={2} title="Download the scene collection">
-                  <a
-                    href="/scene-collection.json"
-                    download="dock-control-collection.json"
-                    className="inline-block rounded-xl bg-ios-fill px-3 py-1.5 text-sm sm:text-xs font-semibold text-ios-blue transition-all duration-200 ease-out hover:bg-ios-fill2 active:scale-[0.98]"
-                  >
-                    Download collection file
-                  </a>
+                  <CollectionDownload platform={checks.platform} />
                 </Step>
 
                 <Step n={3} title="Import it in OBS">
@@ -242,6 +236,54 @@ export default function SetupPanel({ query, subscribe, scenes, onClose }: SetupP
   )
 }
 
+// Platform-aware download: the camera capture kind differs per OS, so each
+// platform gets its own collection file. When OBS told us its platform, offer
+// that file directly; otherwise let the operator pick.
+function CollectionDownload({ platform, compact = false }: { platform: Platform | null; compact?: boolean }) {
+  const primaryCls = compact
+    ? 'text-sm sm:text-xs text-ios-blue transition-colors hover:text-ios-blue-light'
+    : 'inline-block rounded-xl bg-ios-fill px-3 py-1.5 text-sm sm:text-xs font-semibold text-ios-blue transition-all duration-200 ease-out hover:bg-ios-fill2 active:scale-[0.98]'
+
+  if (platform) {
+    const others = PLATFORMS.filter((p) => p !== platform)
+    return (
+      <div className="space-y-1">
+        <a href={COLLECTION_FILE[platform]} download={`dock-control-${platform}.json`} className={primaryCls}>
+          Download collection file ({PLATFORM_LABEL[platform]})
+        </a>
+        <p className="text-sm sm:text-xs text-ios-label3">
+          Other OS:{' '}
+          {others.map((p, i) => (
+            <span key={p}>
+              {i > 0 && ' · '}
+              <a
+                href={COLLECTION_FILE[p]}
+                download={`dock-control-${p}.json`}
+                className="text-ios-blue transition-colors hover:text-ios-blue-light"
+              >
+                {PLATFORM_LABEL[p]}
+              </a>
+            </span>
+          ))}
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-1">
+      <p className="text-sm sm:text-xs text-ios-label3">Pick the OS of the machine running OBS:</p>
+      <div className="flex flex-wrap gap-2">
+        {PLATFORMS.map((p) => (
+          <a key={p} href={COLLECTION_FILE[p]} download={`dock-control-${p}.json`} className={primaryCls}>
+            {PLATFORM_LABEL[p]}
+          </a>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 interface DeviceOption {
   name: string
   value: string
@@ -254,18 +296,23 @@ function CameraRow({ inputName, label, query }: { inputName: string; label: stri
   const [current, setCurrent] = useState('')
   const [thumb, setThumb] = useState<string | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
+  const [deviceProp, setDeviceProp] = useState<{ prop: string; nameProp?: string } | null>(null)
 
   const load = useCallback(async () => {
     try {
-      const [props, settings] = await Promise.all([
-        query<{ propertyItems: { itemName: string; itemValue: unknown; itemEnabled: boolean }[] }>(
-          'GetInputPropertiesListPropertyItems',
-          { inputName, propertyName: 'device' },
-        ),
-        query<{ inputSettings: Record<string, unknown> }>('GetInputSettings', { inputName }),
-      ])
+      // The device property name depends on the capture kind (per OS)
+      const settings = await query<{ inputKind: string; inputSettings: Record<string, unknown> }>(
+        'GetInputSettings',
+        { inputName },
+      )
+      const propInfo = CAMERA_DEVICE_PROP[settings.inputKind] ?? { prop: 'device' }
+      const props = await query<{ propertyItems: { itemName: string; itemValue: unknown; itemEnabled: boolean }[] }>(
+        'GetInputPropertiesListPropertyItems',
+        { inputName, propertyName: propInfo.prop },
+      )
+      setDeviceProp(propInfo)
       setDevices(props.propertyItems.filter((p) => p.itemEnabled).map((p) => ({ name: p.itemName, value: String(p.itemValue) })))
-      setCurrent(String(settings.inputSettings['device'] ?? ''))
+      setCurrent(String(settings.inputSettings[propInfo.prop] ?? ''))
       setRowError(null)
     } catch (e) {
       setRowError(e instanceof Error && e.message.trim() ? e.message : 'Could not list cameras')
@@ -302,12 +349,15 @@ function CameraRow({ inputName, label, query }: { inputName: string; label: stri
 
   async function pick(value: string): Promise<void> {
     const device = devices.find((d) => d.value === value)
-    if (!device) return
+    if (!device || !deviceProp) return
     setCurrent(value)
     try {
       await query('SetInputSettings', {
         inputName,
-        inputSettings: { device: device.value, device_name: device.name },
+        inputSettings: {
+          [deviceProp.prop]: device.value,
+          ...(deviceProp.nameProp ? { [deviceProp.nameProp]: device.name } : {}),
+        },
       })
       setRowError(null)
     } catch (e) {

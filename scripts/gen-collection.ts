@@ -13,8 +13,9 @@ import { fileURLToPath } from 'node:url'
 import { BACKGROUND_INPUT, BACKGROUND_SCENE, OVERLAY_LAYERS, OVERLAY_SCENE } from '../src/lib/overlay'
 import type { OverlayLayerSpec } from '../src/lib/overlay'
 import { SCREENS } from '../src/lib/scenes'
+import { CAMERA_KIND, PLATFORMS } from '../src/lib/platform'
 
-const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public', 'scene-collection.json')
+const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public')
 
 const CANVAS = '6c69626f-6273-4c00-9d88-c5136d61696e'
 const PREV_VER = 536936450
@@ -70,14 +71,15 @@ function maskFilter(uuid: string, settings: Record<string, number>): Record<stri
   }
 }
 
-// Real capture inputs — device intentionally blank (operator picks in OBS)
-function camera(name: string, uuid: string, filterUuid: string, maskSettings: Record<string, number>) {
+// Real capture inputs — device intentionally blank (operator picks in OBS).
+// The capture kind is the only platform-specific part of the collection.
+function camera(name: string, uuid: string, filterUuid: string, maskSettings: Record<string, number>, kind: string) {
   return {
     prev_ver: PREV_VER,
     name,
     uuid,
-    id: 'macos-avcapture',
-    versioned_id: 'macos-avcapture',
+    id: kind,
+    versioned_id: kind,
     settings: {},
     ...sourceBoilerplate(255, camHotkeys),
     filters: [maskFilter(filterUuid, maskSettings)],
@@ -225,9 +227,15 @@ const SAME_CLONES: Record<string, (string | null)[]> = {
   media: [null, null, 'Media 1\nMedia 3', 'Media 1', 'Media 1\nMedia 3\nMedia 2', 'Media 1\nMedia 3\nMedia 2\nMedia 4'],
 }
 
-function camChain(prefix: string, uuids: string[], filterUuids: string[], masks: (Record<string, number> | null)[]) {
+function camChain(
+  prefix: string,
+  uuids: string[],
+  filterUuids: string[],
+  masks: (Record<string, number> | null)[],
+  kind: string,
+) {
   const key = prefix === 'Main Cam' ? 'main' : 'second'
-  const out = [camera(`${prefix} 0`, uuids[0]!, filterUuids[0]!, MASKS.cam0)]
+  const out = [camera(`${prefix} 0`, uuids[0]!, filterUuids[0]!, MASKS.cam0, kind)]
   for (let i = 1; i <= 5; i++) {
     out.push(clone(`${prefix} ${i}`, uuids[i]!, `${prefix} 0`, SAME_CLONES[key]![i]!, filterUuids[i]!, masks[i]!))
   }
@@ -321,6 +329,10 @@ function comboScene(featured: Token, secondary: Token, suffix: string) {
 const mc = (i: number): string => U.mainCam[i]!
 const sc = (i: number): string => U.secondCam[i]!
 
+// Build the full collection for one platform's camera kind. Program scenes
+// are constructed fresh per build because the overlay/background nesting
+// mutates them.
+function buildCollection(cameraKind: string): Record<string, any> {
 const scenes = [
   scene('MAIN', '5615da7b-c9a9-4d27-8095-d04b6b0c9086', 1, [
     item('Main Cam 0', mc(0), 1, FULL.pos, FULL.posRel, FULL.scale),
@@ -481,7 +493,7 @@ for (const s of [...scenes, ...mediaScenes, ...screenScenes]) {
 }
 
 // --- assemble ----------------------------------------------------------------
-const collection = {
+return {
   name: 'Dock Control',
   groups: [],
   scene_order: [
@@ -529,10 +541,10 @@ const collection = {
   version: 2,
   sources: [
     scenes[0],
-    ...camChain('Main Cam', U.mainCam, FILTER_UUIDS.main, MASKS.main!),
+    ...camChain('Main Cam', U.mainCam, FILTER_UUIDS.main, MASKS.main!, cameraKind),
     scenes[2], scenes[4], scenes[6], scenes[8],
     scenes[1],
-    ...camChain('Second Cam', U.secondCam, FILTER_UUIDS.second, MASKS.second!),
+    ...camChain('Second Cam', U.secondCam, FILTER_UUIDS.second, MASKS.second!, cameraKind),
     scenes[3], scenes[5], scenes[7], scenes[9],
     ...mediaChain(),
     ...mediaScenes,
@@ -544,8 +556,15 @@ const collection = {
     overlayScene,
   ],
 }
+}
 
-mkdirSync(path.dirname(OUT), { recursive: true })
-writeFileSync(OUT, JSON.stringify(collection, null, 4))
-const sceneCount = collection.sources.filter((s: any) => s.id === 'scene').length
-console.log(`written ${OUT}: sources = ${collection.sources.length}, scenes = ${sceneCount}`)
+mkdirSync(PUBLIC_DIR, { recursive: true })
+for (const platform of PLATFORMS) {
+  const collection = buildCollection(CAMERA_KIND[platform])
+  const out = path.join(PUBLIC_DIR, `scene-collection-${platform}.json`)
+  writeFileSync(out, JSON.stringify(collection, null, 4))
+  const sceneCount = collection.sources.filter((s: any) => s.id === 'scene').length
+  console.log(`written ${out}: sources = ${collection.sources.length}, scenes = ${sceneCount}`)
+}
+// legacy URL kept for older docks/bookmarks — macOS variant
+writeFileSync(path.join(PUBLIC_DIR, 'scene-collection.json'), JSON.stringify(buildCollection(CAMERA_KIND.macos), null, 4))
