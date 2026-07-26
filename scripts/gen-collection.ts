@@ -12,7 +12,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BACKGROUND_INPUT, BACKGROUND_SCENE, AUDIO_INPUT, OVERLAY_LAYERS, OVERLAY_SCENE } from '../src/lib/overlay'
 import type { OverlayLayerSpec } from '../src/lib/overlay'
-import { SCREENS } from '../src/lib/scenes'
+import { MEDIA_FULL_BOX, MEDIA_SPLIT_BOX, SCREENS } from '../src/lib/scenes'
+import type { MediaBox, SplitKey } from '../src/lib/scenes'
 import { AUDIO_KIND, CAMERA_KIND, PLATFORMS } from '../src/lib/platform'
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public')
@@ -206,6 +207,17 @@ const MASKS: Record<string, (Record<string, number> | null)[]> & { cam0: Record<
     { rectangle_corner_radius: 134.0, rectangle_width: 1000.0, rectangle_height: 1080.0 },
     { rectangle_corner_radius: 38.0, rectangle_width: 1920.0, rectangle_height: 1080.0 },
   ],
+  // Media plays arbitrary files, fitted via bounds boxes — masks stay
+  // full-frame (rounded corners only, never crops that would slice a
+  // letterboxed video)
+  media: [
+    null,
+    { rectangle_corner_radius: 66.0, rectangle_width: 1920.0, rectangle_height: 1080.0 },
+    { rectangle_corner_radius: 56.0, rectangle_width: 1920.0, rectangle_height: 1080.0 },
+    { rectangle_corner_radius: 46.0, rectangle_width: 1920.0, rectangle_height: 1080.0 },
+    { rectangle_corner_radius: 38.0, rectangle_width: 1920.0, rectangle_height: 1080.0 },
+    { rectangle_corner_radius: 134.0, rectangle_width: 1920.0, rectangle_height: 1080.0 },
+  ],
 } as any
 
 const FILTER_UUIDS = {
@@ -260,7 +272,7 @@ function mediaChain() {
   }
   const out: Record<string, any>[] = [player]
   for (let i = 1; i <= 5; i++) {
-    out.push(clone(`Media ${i}`, U.media[i]!, 'Media 0', SAME_CLONES.media![i]!, uuidFor(`filter:Media ${i}`), MASKS.main![i]!))
+    out.push(clone(`Media ${i}`, U.media[i]!, 'Media 0', SAME_CLONES.media![i]!, uuidFor(`filter:Media ${i}`), MASKS.media![i]!))
   }
   return out
 }
@@ -314,16 +326,31 @@ const CHAINS: Record<Token, { prefix: string; uuids: string[] }> = {
   MEDIA: { prefix: 'Media', uuids: U.media },
 }
 
-function slotItem(token: Token, geom: SlotGeom, id: number) {
+const SUFFIX_TO_STYLE: Record<string, SplitKey> = { '': 'equal', ' 2': 'large', ' 3': 'big-small', ' 4': 'overlay' }
+
+function mediaBoxItem(name: string, uuid: string, id: number, box: MediaBox) {
+  return item(name, uuid, id, [box.x, box.y], posRel([box.x, box.y]), [1.0, 1.0], {
+    boundsType: 2, // OBS_BOUNDS_SCALE_INNER — any resolution fits the slot
+    bounds: [box.w, box.h],
+  })
+}
+
+function slotItem(token: Token, geom: SlotGeom, id: number, mediaBox?: MediaBox) {
   const idx = ROLE_IDX[token][geom.role]
   const chain = CHAINS[token]
-  return item(`${chain.prefix} ${idx}`, chain.uuids[idx]!, id, geom.pos, posRel(geom.pos), geom.scale)
+  const name = `${chain.prefix} ${idx}`
+  if (token === 'MEDIA' && mediaBox) return mediaBoxItem(name, chain.uuids[idx]!, id, mediaBox)
+  return item(name, chain.uuids[idx]!, id, geom.pos, posRel(geom.pos), geom.scale)
 }
 
 function comboScene(featured: Token, secondary: Token, suffix: string) {
   const name = `${featured} ${secondary}${suffix}`
   const [geomA, geomB] = SLOT_GEOM[suffix]!
-  return scene(name, uuidFor(`scene:${name}`), 2, [slotItem(featured, geomA, 1), slotItem(secondary, geomB, 2)])
+  const [boxA, boxB] = MEDIA_SPLIT_BOX[SUFFIX_TO_STYLE[suffix]!]
+  return scene(name, uuidFor(`scene:${name}`), 2, [
+    slotItem(featured, geomA, 1, boxA),
+    slotItem(secondary, geomB, 2, boxB),
+  ])
 }
 
 const mc = (i: number): string => U.mainCam[i]!
@@ -375,7 +402,7 @@ const scenes = [
 ]
 
 const mediaScenes = [
-  scene('MEDIA', uuidFor('scene:MEDIA'), 1, [item('Media 0', U.media[0]!, 1, FULL.pos, FULL.posRel, FULL.scale)]),
+  scene('MEDIA', uuidFor('scene:MEDIA'), 1, [mediaBoxItem('Media 0', U.media[0]!, 1, MEDIA_FULL_BOX)]),
 ]
 for (const suffix of ['', ' 2', ' 3', ' 4']) {
   for (const [f, s] of [

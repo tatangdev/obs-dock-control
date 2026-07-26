@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { OBSEventTypes } from 'obs-websocket-js'
 import type { LayerInfo, MediaStatus } from '../../shared/protocol'
 import type { ObsQuery, ObsSubscribe } from '../lib/useObs'
-import { SCREENS, createScreenScenes, isSetupReady, parseScene } from '../lib/scenes'
+import { SCREENS, createScreenScenes, fixMediaScaling, isSetupReady, parseScene } from '../lib/scenes'
 import {
   BACKGROUND_INPUT,
   BACKGROUND_SCENE,
@@ -138,8 +138,18 @@ export default function SetupChecklist({
       return // source checks are meaningless until the collection is in
     }
 
-    const [mainCam, secondCam, logoSet, backgroundSet, audioExists, audioDeviceSet, camKind, version, ...screenResults] =
-      await Promise.all([
+    const [
+      mainCam,
+      secondCam,
+      logoSet,
+      backgroundSet,
+      audioExists,
+      audioDeviceSet,
+      camKind,
+      version,
+      mediaScaleOutdated,
+      ...screenResults
+    ] = await Promise.all([
         inputHasSetting(query, 'Main Cam 0', DEVICE_KEYS),
         inputHasSetting(query, 'Second Cam 0', DEVICE_KEYS),
         inputHasSetting(query, LOGO_INPUT, ['file']),
@@ -148,6 +158,13 @@ export default function SetupChecklist({
         inputHasSetting(query, AUDIO_INPUT, ['device_id']),
         inputKindOf(query, 'Main Cam 0'),
         query<{ platform: string }>('GetVersion').catch(() => null),
+        // marker of the old media layout: crop mask still 764 wide
+        query<{ filterSettings: Record<string, unknown> }>('GetSourceFilter', {
+          sourceName: 'Media 3',
+          filterName: 'Advanced Mask',
+        })
+          .then((r) => r.filterSettings['rectangle_width'] === 764)
+          .catch(() => null),
         ...SCREENS.map((s) => inputHasSetting(query, s.input, ['file'])),
       ])
 
@@ -322,6 +339,26 @@ export default function SetupChecklist({
             'Double-click the "Background" source.',
             'Browse to the 1920×1080 background design and press OK.',
             'Every layout shows it — change it here once and everything follows.',
+          ],
+        },
+      })
+    }
+
+    if (mediaScaleOutdated === true) {
+      found.push({
+        key: 'media-scale',
+        label: 'Media scaling fix available',
+        problem: 'Videos that are not 1080p render oversized or sliced in the media slots.',
+        fix: {
+          label: 'Fix media scaling',
+          run: () => fixMediaScaling(query, scenes),
+        },
+        guide: {
+          title: 'Fix the media scaling',
+          steps: [
+            'Press "Fix media scaling" — every media slot switches to a fit-inside box, so any resolution or aspect ratio shows completely.',
+            'The two crop masks on the media clones widen to full frame (rounded corners stay).',
+            'Nothing else changes — cameras, images and layouts are untouched.',
           ],
         },
       })

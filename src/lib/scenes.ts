@@ -106,7 +106,88 @@ export function isSetupReady(scenes: readonly string[]): boolean {
   return CORE_SCENES.every((name) => scenes.includes(name))
 }
 
+// --- media fitting -----------------------------------------------------------
+// Camera slots use fixed scales (capture sources are 1080p), but media files
+// come in any resolution/aspect — media items use fit-inside bounds boxes so
+// the whole video is always visible, letterboxed over the shared background.
+
+export interface MediaBox {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+export const MEDIA_FULL_BOX: MediaBox = { x: 0, y: 0, w: 1920, h: 1080 }
+
+/** Per split style: [featured slot box, secondary slot box] */
+export const MEDIA_SPLIT_BOX: Record<SplitKey, [MediaBox, MediaBox]> = {
+  equal: [
+    { x: 60, y: 296, w: 869, h: 489 },
+    { x: 990, y: 296, w: 870, h: 489 },
+  ],
+  large: [
+    { x: 60, y: 190, w: 1243, h: 699 },
+    { x: 1362, y: 190, w: 494, h: 699 },
+  ],
+  'big-small': [
+    { x: 60, y: 60, w: 1500, h: 844 },
+    { x: 1451, y: 581, w: 406, h: 439 },
+  ],
+  overlay: [
+    { x: 0, y: 0, w: 1920, h: 1080 },
+    { x: 1451, y: 321, w: 406, h: 439 },
+  ],
+}
+
+export function mediaBoxFor(sel: Selection): MediaBox | null {
+  if (sel.mode === 'fullscreen') return sel.source === 'media' ? MEDIA_FULL_BOX : null
+  if (sel.mode === 'split') {
+    if (sel.featured === 'media') return MEDIA_SPLIT_BOX[sel.style][0]
+    if (sel.secondary === 'media') return MEDIA_SPLIT_BOX[sel.style][1]
+  }
+  return null
+}
+
 type Query = <T = unknown>(request: string, params?: Record<string, unknown>) => Promise<T>
+
+// Repair older imports where media items used fixed 1080p scales: widen the
+// two crop masks to full frame and re-transform every media item to its
+// fit-inside box. Safe to re-run.
+export async function fixMediaScaling(query: Query, scenes: readonly string[]): Promise<void> {
+  for (const sourceName of ['Media 3', 'Media 5']) {
+    await query('SetSourceFilterSettings', {
+      sourceName,
+      filterName: 'Advanced Mask',
+      filterSettings: { rectangle_width: 1920.0, rectangle_height: 1080.0 },
+    }).catch(() => undefined) // clone may not exist on partial installs
+  }
+  for (const sceneName of scenes) {
+    const sel = parseScene(sceneName)
+    if (!sel) continue
+    const box = mediaBoxFor(sel)
+    if (!box) continue
+    const { sceneItems } = await query<{ sceneItems: { sceneItemId: number; sourceName: string }[] }>(
+      'GetSceneItemList',
+      { sceneName },
+    )
+    for (const item of sceneItems) {
+      if (!String(item.sourceName).startsWith('Media ')) continue
+      await query('SetSceneItemTransform', {
+        sceneName,
+        sceneItemId: item.sceneItemId,
+        sceneItemTransform: {
+          positionX: box.x,
+          positionY: box.y,
+          boundsType: 'OBS_BOUNDS_SCALE_INNER',
+          boundsAlignment: 0,
+          boundsWidth: box.w,
+          boundsHeight: box.h,
+        },
+      })
+    }
+  }
+}
 
 // Create missing screen scenes in a live OBS: scene + full-screen image
 // source + the OVERLAY nested on top (so ticker/logo keep working over them).
