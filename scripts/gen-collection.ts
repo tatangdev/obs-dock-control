@@ -146,7 +146,8 @@ function item(
     scale: { x: scale[0], y: scale[1] },
     scale_rel: { x: scale[0], y: scale[1] },
     bounds: { x: bounds[0], y: bounds[1] },
-    bounds_rel: { x: bounds[0], y: bounds[1] },
+    // *_rel fields are in half-canvas-height units (1080/2 = 540), like pos_rel
+    bounds_rel: { x: bounds[0] / 540, y: bounds[1] / 540 },
     scale_filter: 'disable',
     blend_method: 'default',
     blend_type: 'normal',

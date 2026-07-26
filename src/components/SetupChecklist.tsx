@@ -158,12 +158,17 @@ export default function SetupChecklist({
         inputHasSetting(query, AUDIO_INPUT, ['device_id']),
         inputKindOf(query, 'Main Cam 0'),
         query<{ platform: string }>('GetVersion').catch(() => null),
-        // marker of the old media layout: crop mask still 764 wide
-        query<{ filterSettings: Record<string, unknown> }>('GetSourceFilter', {
-          sourceName: 'Media 3',
-          filterName: 'Advanced Mask',
-        })
-          .then((r) => r.filterSettings['rectangle_width'] === 764)
+        // media items must be a fit-inside box of exactly the canvas size —
+        // catches both old fixed-scale imports and mis-scaled bounds
+        query<{ sceneItems: { sourceName: string; sceneItemTransform: Record<string, unknown> }[] }>(
+          'GetSceneItemList',
+          { sceneName: 'MEDIA' },
+        )
+          .then((r) => {
+            const t = r.sceneItems.find((i) => i.sourceName === 'Media 0')?.sceneItemTransform
+            if (!t) return null
+            return t['boundsType'] !== 'OBS_BOUNDS_SCALE_INNER' || t['boundsWidth'] !== 1920
+          })
           .catch(() => null),
         ...SCREENS.map((s) => inputHasSetting(query, s.input, ['file'])),
       ])

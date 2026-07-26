@@ -11,7 +11,7 @@ export type SourceKey = 'main' | 'second' | 'media'
 /** Name of the importable collection served at /scene-collection.json */
 export const COLLECTION_NAME = 'Dock Control'
 
-import { BACKGROUND_SCENE, OVERLAY_SCENE } from './overlay'
+import { BACKGROUND_INPUT, BACKGROUND_SCENE, LOGO_INPUT, OVERLAY_SCENE } from './overlay'
 
 /** The OBS media input that plays the media video (SDE, highlight reel, anything) */
 export const MEDIA_INPUT = 'Media 0'
@@ -151,9 +151,24 @@ export function mediaBoxFor(sel: Selection): MediaBox | null {
 
 type Query = <T = unknown>(request: string, params?: Record<string, unknown>) => Promise<T>
 
-// Repair older imports where media items used fixed 1080p scales: widen the
-// two crop masks to full frame and re-transform every media item to its
-// fit-inside box. Safe to re-run.
+async function setFitBox(query: Query, sceneName: string, sceneItemId: number, box: MediaBox): Promise<void> {
+  await query('SetSceneItemTransform', {
+    sceneName,
+    sceneItemId,
+    sceneItemTransform: {
+      positionX: box.x,
+      positionY: box.y,
+      boundsType: 'OBS_BOUNDS_SCALE_INNER',
+      boundsAlignment: 0,
+      boundsWidth: box.w,
+      boundsHeight: box.h,
+    },
+  })
+}
+
+// Repair imports where bounds boxes are wrong (older fixed-scale imports, or
+// collections whose bounds_rel was mis-scaled on import): widen the two crop
+// masks and re-transform every fitted item to its intended box. Safe to re-run.
 export async function fixMediaScaling(query: Query, scenes: readonly string[]): Promise<void> {
   for (const sourceName of ['Media 3', 'Media 5']) {
     await query('SetSourceFilterSettings', {
@@ -173,19 +188,21 @@ export async function fixMediaScaling(query: Query, scenes: readonly string[]): 
     )
     for (const item of sceneItems) {
       if (!String(item.sourceName).startsWith('Media ')) continue
-      await query('SetSceneItemTransform', {
-        sceneName,
-        sceneItemId: item.sceneItemId,
-        sceneItemTransform: {
-          positionX: box.x,
-          positionY: box.y,
-          boundsType: 'OBS_BOUNDS_SCALE_INNER',
-          boundsAlignment: 0,
-          boundsWidth: box.w,
-          boundsHeight: box.h,
-        },
-      })
+      await setFitBox(query, sceneName, item.sceneItemId, box)
     }
+  }
+  // Non-media fitted items carry the same bounds fields — repair them too
+  const fitted: { scene: string; source: string; box: MediaBox }[] = [
+    { scene: BACKGROUND_SCENE, source: BACKGROUND_INPUT, box: MEDIA_FULL_BOX },
+    { scene: OVERLAY_SCENE, source: LOGO_INPUT, box: { x: 1620, y: 60, w: 240, h: 140 } },
+    ...SCREENS.map((s) => ({ scene: s.scene, source: s.input, box: MEDIA_FULL_BOX })),
+  ]
+  for (const { scene, source, box } of fitted) {
+    const list = await query<{ sceneItems: { sceneItemId: number; sourceName: string }[] }>('GetSceneItemList', {
+      sceneName: scene,
+    }).catch(() => null)
+    const item = list?.sceneItems.find((i) => i.sourceName === source)
+    if (item) await setFitBox(query, scene, item.sceneItemId, box).catch(() => undefined)
   }
 }
 
