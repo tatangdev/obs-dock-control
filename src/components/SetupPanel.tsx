@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { OBSEventTypes } from 'obs-websocket-js'
-import type { ObsQuery, ObsSubscribe } from '../lib/useObs'
+import type { ObsQuery, ObsSubscribe, ObsWatchMeters } from '../lib/useObs'
 import { COLLECTION_NAME, REQUIRED_SCENES, isSetupReady } from '../lib/scenes'
+import { AUDIO_INPUT } from '../lib/overlay'
 import { CAMERA_DEVICE_PROP, COLLECTION_FILE, PLATFORMS, PLATFORM_LABEL, platformFromObs } from '../lib/platform'
 import type { Platform } from '../lib/platform'
 
@@ -36,6 +37,7 @@ interface Checks {
 interface SetupPanelProps {
   query: ObsQuery
   subscribe: ObsSubscribe
+  watchMeters: ObsWatchMeters
   scenes: string[]
   onClose: () => void
 }
@@ -43,7 +45,7 @@ interface SetupPanelProps {
 // Operator onboarding: verifies plugins, hands out the scene collection file,
 // activates it once imported, and lets the operator pick cameras with live
 // thumbnails — no OBS dialogs needed. Re-checks itself whenever OBS changes.
-export default function SetupPanel({ query, subscribe, scenes, onClose }: SetupPanelProps) {
+export default function SetupPanel({ query, subscribe, watchMeters, scenes, onClose }: SetupPanelProps) {
   const [checks, setChecks] = useState<Checks | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [activating, setActivating] = useState(false)
@@ -227,6 +229,11 @@ export default function SetupPanel({ query, subscribe, scenes, onClose }: SetupP
                 </p>
                 <CameraRow inputName="Main Cam 0" label="Camera 1 (Main)" query={query} />
                 <CameraRow inputName="Second Cam 0" label="Camera 2 (Second)" query={query} />
+                <div className="pt-2 text-base sm:text-sm font-medium text-white">Audio</div>
+                <p className="text-sm sm:text-xs text-ios-label3">
+                  Pick the soundcard or interface carrying the mixer feed — the meter moves when it gets signal.
+                </p>
+                <AudioInputRow query={query} watchMeters={watchMeters} />
               </div>
             )}
           </div>
@@ -390,6 +397,84 @@ function CameraRow({ inputName, label, query }: { inputName: string; label: stri
         </select>
         {rowError && <p className="mt-1 text-xs text-ios-red">{rowError}</p>}
       </div>
+    </div>
+  )
+}
+
+// Audio input picker with a live level meter — the meter moving is the
+// operator's proof that the soundcard/mixer feed actually reaches OBS.
+function AudioInputRow({ query, watchMeters }: { query: ObsQuery; watchMeters: ObsWatchMeters }) {
+  const [devices, setDevices] = useState<DeviceOption[]>([])
+  const [current, setCurrent] = useState('')
+  const [peakDb, setPeakDb] = useState(-100)
+  const [rowError, setRowError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    try {
+      const [props, settings] = await Promise.all([
+        query<{ propertyItems: { itemName: string; itemValue: unknown; itemEnabled: boolean }[] }>(
+          'GetInputPropertiesListPropertyItems',
+          { inputName: AUDIO_INPUT, propertyName: 'device_id' },
+        ),
+        query<{ inputSettings: Record<string, unknown> }>('GetInputSettings', { inputName: AUDIO_INPUT }),
+      ])
+      setDevices(
+        props.propertyItems.filter((p) => p.itemEnabled).map((p) => ({ name: p.itemName, value: String(p.itemValue) })),
+      )
+      setCurrent(String(settings.inputSettings['device_id'] ?? ''))
+      setRowError(null)
+    } catch (e) {
+      setRowError(
+        e instanceof Error && e.message.trim()
+          ? e.message
+          : 'Audio input not found — add it from Needs attention first.',
+      )
+    }
+  }, [query])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  useEffect(() => watchMeters(AUDIO_INPUT, setPeakDb), [watchMeters])
+
+  async function pick(value: string): Promise<void> {
+    if (!devices.some((d) => d.value === value)) return
+    setCurrent(value)
+    try {
+      await query('SetInputSettings', { inputName: AUDIO_INPUT, inputSettings: { device_id: value } })
+      setRowError(null)
+    } catch (e) {
+      setRowError(e instanceof Error && e.message.trim() ? e.message : 'Could not set the audio device')
+    }
+  }
+
+  const pct = Math.max(0, Math.min(100, ((peakDb + 60) / 60) * 100))
+  const meterColor = peakDb > -6 ? 'bg-ios-red' : peakDb > -18 ? 'bg-ios-orange' : 'bg-ios-green'
+
+  return (
+    <div className="space-y-2 rounded-xl bg-ios-fill/60 p-2">
+      <select
+        value={current}
+        onChange={(e) => void pick(e.target.value)}
+        className="w-full rounded-xl border border-transparent bg-ios-fill px-2 py-1.5 text-sm sm:text-xs text-white outline-none transition-colors duration-200 ease-out focus:border-ios-blue"
+      >
+        <option value="">— system default —</option>
+        {devices.map((d) => (
+          <option key={d.value} value={d.value}>
+            {d.name}
+          </option>
+        ))}
+      </select>
+      <div className="flex items-center gap-2">
+        <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-ios-fill">
+          <div className={`h-full rounded-full transition-[width] duration-75 ${meterColor}`} style={{ width: `${pct}%` }} />
+        </div>
+        <span className="w-14 shrink-0 text-right text-sm sm:text-xs tabular-nums text-ios-label3">
+          {peakDb <= -99 ? 'silent' : `${peakDb.toFixed(0)} dB`}
+        </span>
+      </div>
+      {rowError && <p className="text-sm sm:text-xs text-ios-red">{rowError}</p>}
     </div>
   )
 }

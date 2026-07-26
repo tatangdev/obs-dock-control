@@ -17,7 +17,14 @@ export interface LayerInfo {
   enabled: boolean
 }
 
+export interface AudioTrack {
+  volumeDb: number
+  muted: boolean
+}
+
 export interface ObsState {
+  /** null per track when that input doesn't exist yet */
+  audio: { input: AudioTrack | null; media: AudioTrack | null }
   currentScene: string
   scenes: string[]
   streaming: boolean

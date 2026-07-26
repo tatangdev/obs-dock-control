@@ -52,8 +52,18 @@ function mediaRole(sel: Selection | null): 'fullscreen' | 'pip' | null {
 }
 
 export default function Dock() {
-  const { status: obsStatus, error: obsError, state, connect, call, query, subscribe, callError, clearCallError } =
-    useObs()
+  const {
+    status: obsStatus,
+    error: obsError,
+    state,
+    connect,
+    call,
+    query,
+    subscribe,
+    watchMeters,
+    callError,
+    clearCallError,
+  } = useObs()
   const [setupOpen, setSetupOpen] = useState(false)
   const obsReady = state === null || isSetupReady(state.scenes)
 
@@ -444,6 +454,7 @@ export default function Dock() {
         <SetupPanel
           query={query}
           subscribe={subscribe}
+          watchMeters={watchMeters}
           scenes={state?.scenes ?? []}
           onClose={() => setSetupOpen(false)}
         />

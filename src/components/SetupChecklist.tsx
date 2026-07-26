@@ -7,11 +7,14 @@ import {
   BACKGROUND_INPUT,
   BACKGROUND_SCENE,
   LOGO_INPUT,
+  AUDIO_INPUT,
   OVERLAY_LAYERS,
   OVERLAY_SCENE,
   createBackgroundSetup,
+  createAudioInput,
   createOverlayLayers,
 } from '../lib/overlay'
+import { AUDIO_KIND, platformFromObs } from '../lib/platform'
 
 interface Guide {
   title: string
@@ -39,6 +42,15 @@ const WATCH_EVENTS: readonly (keyof OBSEventTypes)[] = [
 
 // Which settings key holds the picked device depends on the capture kind
 const DEVICE_KEYS = ['device', 'video_device_id', 'device_id']
+
+async function inputExists(query: ObsQuery, inputName: string): Promise<boolean> {
+  try {
+    await query('GetInputSettings', { inputName })
+    return true
+  } catch {
+    return false
+  }
+}
 
 async function inputHasSetting(query: ObsQuery, inputName: string, keys: readonly string[]): Promise<boolean | null> {
   try {
@@ -117,13 +129,16 @@ export default function SetupChecklist({
       return // source checks are meaningless until the collection is in
     }
 
-    const [mainCam, secondCam, logoSet, backgroundSet, ...screenResults] = await Promise.all([
-      inputHasSetting(query, 'Main Cam 0', DEVICE_KEYS),
-      inputHasSetting(query, 'Second Cam 0', DEVICE_KEYS),
-      inputHasSetting(query, LOGO_INPUT, ['file']),
-      inputHasSetting(query, BACKGROUND_INPUT, ['file']),
-      ...SCREENS.map((s) => inputHasSetting(query, s.input, ['file'])),
-    ])
+    const [mainCam, secondCam, logoSet, backgroundSet, audioExists, audioDeviceSet, ...screenResults] =
+      await Promise.all([
+        inputHasSetting(query, 'Main Cam 0', DEVICE_KEYS),
+        inputHasSetting(query, 'Second Cam 0', DEVICE_KEYS),
+        inputHasSetting(query, LOGO_INPUT, ['file']),
+        inputHasSetting(query, BACKGROUND_INPUT, ['file']),
+        inputExists(query, AUDIO_INPUT),
+        inputHasSetting(query, AUDIO_INPUT, ['device_id']),
+        ...SCREENS.map((s) => inputHasSetting(query, s.input, ['file'])),
+      ])
 
     if (mainCam === false) {
       found.push({
@@ -279,6 +294,44 @@ export default function SetupChecklist({
       })
     }
 
+    if (!backgroundMissing && !audioExists) {
+      found.push({
+        key: 'audio-update',
+        label: 'Audio input available',
+        problem: 'No audio input in the scenes — the stream carries no sound.',
+        fix: {
+          label: 'Add audio input',
+          run: async () => {
+            const version = await query<{ platform: string }>('GetVersion')
+            await createAudioInput(query, AUDIO_KIND[platformFromObs(version.platform) ?? 'macos'])
+          },
+        },
+        guide: {
+          title: 'Add the audio input',
+          steps: [
+            'Press "Add audio input" — the dock creates an input that is live on every layout.',
+            'Then pick the soundcard/mixer device in Setup — the Audio section shows the devices with a live level meter.',
+            'A volume fader appears in the Audio section of the control panel.',
+          ],
+        },
+      })
+    } else if (audioExists && audioDeviceSet === false) {
+      found.push({
+        key: 'audio-device',
+        label: 'Audio input device',
+        problem: 'Using the system default device — pick the soundcard so the stream carries the mixer feed.',
+        setupAction: true,
+        guide: {
+          title: 'Pick the soundcard',
+          steps: [
+            'Open Setup — the Audio section lists the input devices with a live level meter.',
+            'Pick the soundcard/interface that carries the mixer feed.',
+            'Confirm the meter moves when the desk sends audio.',
+          ],
+        },
+      })
+    }
+
     if (missingScreens.length === 0 && screenLeftovers.length > 0) {
       found.push({
         key: 'screen-leftovers',
@@ -394,6 +447,7 @@ export default function SetupChecklist({
                   setFixError(null)
                   item.fix
                     ?.run()
+                    .then(() => runChecks())
                     .catch((e: unknown) => {
                       setFixError(e instanceof Error && e.message.trim() ? e.message : 'Could not apply the fix')
                     })

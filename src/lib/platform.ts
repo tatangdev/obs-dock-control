@@ -18,6 +18,12 @@ export const CAMERA_KIND: Record<Platform, string> = {
   linux: 'v4l2_input',
 }
 
+export const AUDIO_KIND: Record<Platform, string> = {
+  macos: 'coreaudio_input_capture',
+  windows: 'wasapi_input_capture',
+  linux: 'pulse_input_capture',
+}
+
 /** Which input-settings key holds the picked device, per capture kind */
 export const CAMERA_DEVICE_PROP: Record<string, { prop: string; nameProp?: string }> = {
   'macos-avcapture': { prop: 'device', nameProp: 'device_name' },

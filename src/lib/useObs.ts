@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import OBSWebSocket from 'obs-websocket-js'
+import OBSWebSocket, { EventSubscription } from 'obs-websocket-js'
 import type { OBSEventTypes } from 'obs-websocket-js'
-import type { LayerInfo, MediaPlayState, MediaStatus, ObsState } from '../../shared/protocol'
+import type { AudioTrack, LayerInfo, MediaPlayState, MediaStatus, ObsState } from '../../shared/protocol'
 import { MEDIA_INPUT } from './scenes'
-import { OVERLAY_SCENE, RUNNING_TEXT_INPUT } from './overlay'
+import { AUDIO_INPUT, OVERLAY_SCENE, RUNNING_TEXT_INPUT } from './overlay'
 
 export type ObsStatus = 'idle' | 'connecting' | 'connected' | 'error'
 
@@ -14,6 +14,9 @@ export type ObsQuery = <T = unknown>(request: string, params?: Record<string, un
 
 /** Listen to raw OBS events; returns an unsubscribe function. */
 export type ObsSubscribe = (events: readonly (keyof OBSEventTypes)[], handler: () => void) => () => void
+
+/** Live peak level (dBFS) for one input; returns a stop function. */
+export type ObsWatchMeters = (inputName: string, handler: (peakDb: number) => void) => () => void
 
 export interface CallError {
   request: string
@@ -39,6 +42,8 @@ const REFRESH_EVENTS: (keyof OBSEventTypes)[] = [
   'SceneItemCreated',
   'SceneItemRemoved',
   'SceneItemListReindexed',
+  'InputVolumeChanged',
+  'InputMuteStateChanged',
   // Not in obs-websocket-js 5.0 typings but emitted by obs-websocket >= 5.4;
   // keeps the running-text mirror fresh when it's edited inside OBS.
   'InputSettingsChanged' as keyof OBSEventTypes,
@@ -88,6 +93,18 @@ async function layersSnapshot(obs: OBSWebSocket): Promise<LayerInfo[]> {
   }
 }
 
+async function audioTrackSnapshot(obs: OBSWebSocket, inputName: string): Promise<AudioTrack | null> {
+  try {
+    const [volume, mute] = await Promise.all([
+      obs.call('GetInputVolume', { inputName }),
+      obs.call('GetInputMute', { inputName }),
+    ])
+    return { volumeDb: volume.inputVolumeDb, muted: mute.inputMuted }
+  } catch {
+    return null // input doesn't exist yet
+  }
+}
+
 async function runningTextSnapshot(obs: OBSWebSocket): Promise<string | null> {
   try {
     const { inputSettings } = await obs.call('GetInputSettings', { inputName: RUNNING_TEXT_INPUT })
@@ -99,16 +116,19 @@ async function runningTextSnapshot(obs: OBSWebSocket): Promise<string | null> {
 }
 
 async function snapshot(obs: OBSWebSocket): Promise<ObsState> {
-  const [sceneList, stream, record, media, layers, runningText] = await Promise.all([
+  const [sceneList, stream, record, media, layers, runningText, audioIn, mediaAudio] = await Promise.all([
     obs.call('GetSceneList'),
     obs.call('GetStreamStatus'),
     obs.call('GetRecordStatus'),
     mediaSnapshot(obs),
     layersSnapshot(obs),
     runningTextSnapshot(obs),
+    audioTrackSnapshot(obs, AUDIO_INPUT),
+    audioTrackSnapshot(obs, MEDIA_INPUT),
   ])
 
   return {
+    audio: { input: audioIn, media: mediaAudio },
     currentScene: sceneList.currentProgramSceneName,
     scenes: sceneList.scenes.map((s) => String(s.sceneName)).reverse(),
     streaming: stream.outputActive,
@@ -188,6 +208,31 @@ export function useObs() {
     [obs],
   )
 
+  // Volume meters are a high-volume event stream, off by default — opt in
+  // while a watcher is mounted (the Setup audio row), back out afterwards.
+  const watchMeters = useCallback<ObsWatchMeters>(
+    (inputName, handler) => {
+      void obs
+        .reidentify({ eventSubscriptions: EventSubscription.All | EventSubscription.InputVolumeMeters })
+        .catch(() => {})
+      const onMeters = (data: { inputs: { inputName?: unknown; inputLevelsMul?: unknown }[] }): void => {
+        const entry = data.inputs.find((i) => i.inputName === inputName)
+        if (!entry || !Array.isArray(entry.inputLevelsMul)) return
+        let peak = 0
+        for (const channel of entry.inputLevelsMul as number[][]) {
+          peak = Math.max(peak, channel[1] ?? channel[0] ?? 0)
+        }
+        handler(peak > 0 ? 20 * Math.log10(peak) : -100)
+      }
+      obs.on('InputVolumeMeters' as never, onMeters as never)
+      return () => {
+        obs.off('InputVolumeMeters' as never, onMeters as never)
+        void obs.reidentify({ eventSubscriptions: EventSubscription.All }).catch(() => {})
+      }
+    },
+    [obs],
+  )
+
   const subscribe = useCallback<ObsSubscribe>(
     (events, handler) => {
       for (const ev of events) obs.on(ev, handler)
@@ -224,5 +269,5 @@ export function useObs() {
     }
   }, [obs, scheduleRefresh])
 
-  return { status, error, state, connect, call, query, subscribe, callError, clearCallError }
+  return { status, error, state, connect, call, query, subscribe, watchMeters, callError, clearCallError }
 }

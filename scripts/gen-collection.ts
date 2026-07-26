@@ -10,10 +10,10 @@ import { writeFileSync, mkdirSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { BACKGROUND_INPUT, BACKGROUND_SCENE, OVERLAY_LAYERS, OVERLAY_SCENE } from '../src/lib/overlay'
+import { BACKGROUND_INPUT, BACKGROUND_SCENE, AUDIO_INPUT, OVERLAY_LAYERS, OVERLAY_SCENE } from '../src/lib/overlay'
 import type { OverlayLayerSpec } from '../src/lib/overlay'
 import { SCREENS } from '../src/lib/scenes'
-import { CAMERA_KIND, PLATFORMS } from '../src/lib/platform'
+import { AUDIO_KIND, CAMERA_KIND, PLATFORMS } from '../src/lib/platform'
 
 const PUBLIC_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public')
 
@@ -332,7 +332,7 @@ const sc = (i: number): string => U.secondCam[i]!
 // Build the full collection for one platform's camera kind. Program scenes
 // are constructed fresh per build because the overlay/background nesting
 // mutates them.
-function buildCollection(cameraKind: string): Record<string, any> {
+function buildCollection(cameraKind: string, audioKind: string): Record<string, any> {
 const scenes = [
   scene('MAIN', '5615da7b-c9a9-4d27-8095-d04b6b0c9086', 1, [
     item('Main Cam 0', mc(0), 1, FULL.pos, FULL.posRel, FULL.scale),
@@ -462,11 +462,23 @@ const backgroundSource = {
   settings: {}, // operator sets the shared 1920x1080 background in OBS, once
   ...sourceBoilerplate(0, {}),
 }
-const backgroundScene = scene(BACKGROUND_SCENE, BACKGROUND_UUID, 1, [
+// The mic rides in the BACKGROUND scene so it's active on every layout.
+// Empty settings = system default input device (operator can change in OBS).
+const micSource = {
+  prev_ver: PREV_VER,
+  name: AUDIO_INPUT,
+  uuid: uuidFor(`source:${AUDIO_INPUT}`),
+  id: audioKind,
+  versioned_id: audioKind,
+  settings: {},
+  ...sourceBoilerplate(255, camHotkeys),
+}
+const backgroundScene = scene(BACKGROUND_SCENE, BACKGROUND_UUID, 2, [
   item(BACKGROUND_INPUT, uuidFor(`source:${BACKGROUND_INPUT}`), 1, [0.0, 0.0], posRel([0.0, 0.0]), [1.0, 1.0], {
     boundsType: 2,
     bounds: [1920.0, 1080.0],
   }),
+  item(AUDIO_INPUT, uuidFor(`source:${AUDIO_INPUT}`), 2, [0.0, 0.0], posRel([0.0, 0.0]), [1.0, 1.0]),
 ])
 
 // Nest the OVERLAY scene as the top-most item and the BACKGROUND scene as the
@@ -551,6 +563,7 @@ return {
     ...screenSources,
     ...screenScenes,
     backgroundSource,
+    micSource,
     backgroundScene,
     ...overlaySources,
     overlayScene,
@@ -560,11 +573,14 @@ return {
 
 mkdirSync(PUBLIC_DIR, { recursive: true })
 for (const platform of PLATFORMS) {
-  const collection = buildCollection(CAMERA_KIND[platform])
+  const collection = buildCollection(CAMERA_KIND[platform], AUDIO_KIND[platform])
   const out = path.join(PUBLIC_DIR, `scene-collection-${platform}.json`)
   writeFileSync(out, JSON.stringify(collection, null, 4))
   const sceneCount = collection.sources.filter((s: any) => s.id === 'scene').length
   console.log(`written ${out}: sources = ${collection.sources.length}, scenes = ${sceneCount}`)
 }
 // legacy URL kept for older docks/bookmarks — macOS variant
-writeFileSync(path.join(PUBLIC_DIR, 'scene-collection.json'), JSON.stringify(buildCollection(CAMERA_KIND.macos), null, 4))
+writeFileSync(
+  path.join(PUBLIC_DIR, 'scene-collection.json'),
+  JSON.stringify(buildCollection(CAMERA_KIND.macos, AUDIO_KIND.macos), null, 4),
+)

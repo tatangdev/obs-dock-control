@@ -67,7 +67,23 @@ export const RUNNING_TEXT_INPUT = 'Running Text'
 export const BACKGROUND_SCENE = 'BACKGROUND'
 export const BACKGROUND_INPUT = 'Background'
 
+// The audio input (soundcard / mixer feed) lives in the BACKGROUND scene too,
+// so it is active on every program scene. Empty settings = system default
+// device — events should pick the actual soundcard in Setup.
+export const AUDIO_INPUT = 'Audio Input'
+
 type Query = <T = unknown>(request: string, params?: Record<string, unknown>) => Promise<T>
+
+// Create the audio input inside the BACKGROUND scene of a live OBS
+export async function createAudioInput(query: Query, audioKind: string): Promise<void> {
+  await query('CreateInput', {
+    sceneName: BACKGROUND_SCENE,
+    inputName: AUDIO_INPUT,
+    inputKind: audioKind,
+    inputSettings: {},
+    sceneItemEnabled: true,
+  })
+}
 
 // Create the BACKGROUND scene in a live OBS and slot it beneath every given
 // program scene. Reuses the Background input if it already exists.

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
-import type { ObsState } from '../../shared/protocol'
-import { SOURCES, parseScene, sceneFor } from '../lib/scenes'
+import { useEffect, useRef, useState } from 'react'
+import type { AudioTrack, ObsState } from '../../shared/protocol'
+import { MEDIA_INPUT, SOURCES, parseScene, sceneFor } from '../lib/scenes'
 import type { SourceKey, SplitKey } from '../lib/scenes'
+import { AUDIO_INPUT } from '../lib/overlay'
 import MediaPanel from './MediaPanel'
 import type { MediaPrefs } from './MediaPanel'
 
@@ -325,6 +326,18 @@ export default function ControlPanel({ state, send, mediaPrefs }: ControlPanelPr
         </div>
       </section>
 
+      {(state.audio.input || state.audio.media) && (
+        <section className="space-y-2">
+          <h3 className="text-sm sm:text-xs font-semibold uppercase tracking-wider text-ios-label2">Audio</h3>
+          <div className="space-y-2">
+            {state.audio.input && <AudioRow label="Audio Input" inputName={AUDIO_INPUT} track={state.audio.input} send={send} />}
+            {state.audio.media && (
+              <AudioRow label="Media" inputName={MEDIA_INPUT} track={state.audio.media} send={send} />
+            )}
+          </div>
+        </section>
+      )}
+
       {state.media && <MediaPanel media={state.media} send={send} prefs={mediaPrefs} />}
 
       {pickerOpen && (
@@ -515,6 +528,86 @@ function FullscreenPreview({ source }: { source: SourceKey }) {
       className={`flex h-full w-full items-center justify-center rounded-sm transition-colors duration-300 ease-out ${sourceClasses(source)}`}
     >
       <SourceGlyph source={source} />
+    </div>
+  )
+}
+
+// Mute button + dB fader. The slider stays under local control while
+// dragging (state echoes would fight the finger); sends are throttled during
+// the drag and committed on release.
+function AudioRow({
+  label,
+  inputName,
+  track,
+  send,
+}: {
+  label: string
+  inputName: string
+  track: AudioTrack
+  send: SendCommand
+}) {
+  const [drag, setDrag] = useState<number | null>(null)
+  const dragRef = useRef<number | null>(null)
+  const lastSent = useRef(0)
+  const value = drag ?? Math.max(-60, Math.min(0, track.volumeDb))
+
+  const commit = (): void => {
+    const v = dragRef.current
+    dragRef.current = null
+    setDrag(null)
+    if (v !== null) send('SetInputVolume', { inputName, inputVolumeDb: v })
+  }
+
+  return (
+    <div className="flex items-center gap-3 rounded-2xl bg-ios-card px-3 py-2.5">
+      <button
+        onClick={() => send('ToggleInputMute', { inputName })}
+        title={track.muted ? `Unmute ${label}` : `Mute ${label}`}
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors duration-200 ease-out ${
+          track.muted ? 'bg-ios-red/20 text-ios-red' : 'bg-ios-fill text-ios-label2 hover:bg-ios-fill2'
+        }`}
+      >
+        {track.muted ? (
+          <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current">
+            <path d="M16.5 12A4.5 4.5 0 0 0 14 8v2.2l2.45 2.45c.03-.2.05-.42.05-.65zM3 9v6h4l5 5V4L7 9H3zm13.6 11L4.4 7.8 5.8 6.4 18 18.6 16.6 20z" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current">
+            <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z" />
+          </svg>
+        )}
+      </button>
+      <div className="min-w-0 flex-1">
+        <div className="mb-1 flex items-center justify-between text-sm sm:text-xs">
+          <span className={track.muted ? 'text-ios-label3' : 'text-ios-label2'}>
+            {label}
+            {track.muted ? ' — muted' : ''}
+          </span>
+          <span className="tabular-nums text-ios-label3">{value <= -60 ? '-inf' : value.toFixed(1)} dB</span>
+        </div>
+        <input
+          type="range"
+          min={-60}
+          max={0}
+          step={0.5}
+          value={value}
+          onChange={(e) => {
+            const v = Number(e.target.value)
+            dragRef.current = v
+            setDrag(v)
+            const now = performance.now()
+            if (now - lastSent.current > 80) {
+              lastSent.current = now
+              send('SetInputVolume', { inputName, inputVolumeDb: v })
+            }
+          }}
+          onPointerUp={commit}
+          onPointerCancel={commit}
+          onKeyUp={commit}
+          onBlur={commit}
+          className="w-full"
+        />
+      </div>
     </div>
   )
 }
