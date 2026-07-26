@@ -14,7 +14,7 @@ import {
   createAudioInput,
   createOverlayLayers,
 } from '../lib/overlay'
-import { AUDIO_KIND, platformFromObs } from '../lib/platform'
+import { AUDIO_KIND, CAMERA_KIND, PLATFORM_LABEL, platformFromObs } from '../lib/platform'
 
 interface Guide {
   title: string
@@ -49,6 +49,15 @@ async function inputExists(query: ObsQuery, inputName: string): Promise<boolean>
     return true
   } catch {
     return false
+  }
+}
+
+async function inputKindOf(query: ObsQuery, inputName: string): Promise<string | null> {
+  try {
+    const { inputKind } = await query<{ inputKind: string }>('GetInputSettings', { inputName })
+    return inputKind
+  } catch {
+    return null
   }
 }
 
@@ -129,7 +138,7 @@ export default function SetupChecklist({
       return // source checks are meaningless until the collection is in
     }
 
-    const [mainCam, secondCam, logoSet, backgroundSet, audioExists, audioDeviceSet, ...screenResults] =
+    const [mainCam, secondCam, logoSet, backgroundSet, audioExists, audioDeviceSet, camKind, version, ...screenResults] =
       await Promise.all([
         inputHasSetting(query, 'Main Cam 0', DEVICE_KEYS),
         inputHasSetting(query, 'Second Cam 0', DEVICE_KEYS),
@@ -137,8 +146,32 @@ export default function SetupChecklist({
         inputHasSetting(query, BACKGROUND_INPUT, ['file']),
         inputExists(query, AUDIO_INPUT),
         inputHasSetting(query, AUDIO_INPUT, ['device_id']),
+        inputKindOf(query, 'Main Cam 0'),
+        query<{ platform: string }>('GetVersion').catch(() => null),
         ...SCREENS.map((s) => inputHasSetting(query, s.input, ['file'])),
       ])
+
+    // A collection built for another OS has camera kinds this OBS can't run —
+    // no device can ever be picked. Catch it before the confusing symptoms.
+    const platform = version ? platformFromObs(version.platform) : null
+    if (platform && camKind !== null && camKind !== CAMERA_KIND[platform]) {
+      found.push({
+        key: 'wrong-platform',
+        label: 'Collection is for another OS',
+        problem: `The camera sources don't work on ${PLATFORM_LABEL[platform]} — cameras can never be detected.`,
+        setupAction: true,
+        guide: {
+          title: `Re-import the ${PLATFORM_LABEL[platform]} collection`,
+          steps: [
+            'In OBS: Scene Collection → switch to any other collection, then Remove "Dock Control".',
+            `Open Setup here and download the collection — it now offers the ${PLATFORM_LABEL[platform]} file automatically.`,
+            'Import it (Scene Collection → Import), switch to it, then pick cameras and audio in Setup.',
+          ],
+        },
+      })
+      setItems(found)
+      return // device checks are meaningless on wrong-kind sources
+    }
 
     if (mainCam === false) {
       found.push({
