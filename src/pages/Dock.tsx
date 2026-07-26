@@ -30,6 +30,26 @@ function loadStoredSession(): StoredSession | null {
 
 type SessionStatus = 'none' | 'connecting' | 'live' | 'reconnecting'
 
+// The dock must never touch OBS outputs — block these even if a remote sends
+// them through the generic command channel.
+const BLOCKED_REQUESTS = new Set([
+  'ToggleStream',
+  'StartStream',
+  'StopStream',
+  'ToggleRecord',
+  'StartRecord',
+  'StopRecord',
+  'ToggleRecordPause',
+  'PauseRecord',
+  'ResumeRecord',
+  'StartReplayBuffer',
+  'StopReplayBuffer',
+  'ToggleReplayBuffer',
+  'StartVirtualCam',
+  'StopVirtualCam',
+  'ToggleVirtualCam',
+])
+
 const DEFAULT_MEDIA_PREFS: MediaPrefs = { autoPlayFullscreen: true, autoPlayPip: false, autoReturn: true }
 
 function loadMediaPrefs(): MediaPrefs {
@@ -134,6 +154,14 @@ export default function Dock() {
             setRemoteCount(msg.count)
             break
           case 'command':
+            if (BLOCKED_REQUESTS.has(msg.request)) {
+              relayRef.current?.send({
+                type: 'command-error',
+                request: msg.request,
+                message: 'Output control is disabled — start or stop the stream in OBS itself',
+              })
+              break
+            }
             void callRef.current(msg.request, msg.params)
             break
           case 'error':

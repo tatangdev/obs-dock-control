@@ -32,8 +32,6 @@ const REFRESH_EVENTS: (keyof OBSEventTypes)[] = [
   'SceneCreated',
   'SceneRemoved',
   'SceneNameChanged',
-  'StreamStateChanged',
-  'RecordStateChanged',
   'CurrentSceneCollectionChanged',
   'MediaInputPlaybackStarted',
   'MediaInputPlaybackEnded',
@@ -116,10 +114,8 @@ async function runningTextSnapshot(obs: OBSWebSocket): Promise<string | null> {
 }
 
 async function snapshot(obs: OBSWebSocket): Promise<ObsState> {
-  const [sceneList, stream, record, media, layers, runningText, audioIn, mediaAudio] = await Promise.all([
+  const [sceneList, media, layers, runningText, audioIn, mediaAudio] = await Promise.all([
     obs.call('GetSceneList'),
-    obs.call('GetStreamStatus'),
-    obs.call('GetRecordStatus'),
     mediaSnapshot(obs),
     layersSnapshot(obs),
     runningTextSnapshot(obs),
@@ -131,8 +127,6 @@ async function snapshot(obs: OBSWebSocket): Promise<ObsState> {
     audio: { input: audioIn, media: mediaAudio },
     currentScene: sceneList.currentProgramSceneName,
     scenes: sceneList.scenes.map((s) => String(s.sceneName)).reverse(),
-    streaming: stream.outputActive,
-    recording: record.outputActive,
     layers,
     runningText,
     media,

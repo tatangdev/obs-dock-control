@@ -27,8 +27,6 @@ export interface ObsState {
   audio: { input: AudioTrack | null; media: AudioTrack | null }
   currentScene: string
   scenes: string[]
-  streaming: boolean
-  recording: boolean
   layers: LayerInfo[]
   /** Current content of the running-text overlay, null if the input is missing */
   runningText: string | null

@@ -308,24 +308,6 @@ export default function ControlPanel({ state, send, mediaPrefs }: ControlPanelPr
         )}
       </section>
 
-      <section className="space-y-2">
-        <h3 className="text-sm sm:text-xs font-semibold uppercase tracking-wider text-ios-label2">Output</h3>
-        <div className="grid grid-cols-2 gap-2">
-          <ToggleButton
-            active={state.streaming}
-            activeLabel="Stop Streaming"
-            idleLabel="Start Streaming"
-            onClick={() => send('ToggleStream')}
-          />
-          <ToggleButton
-            active={state.recording}
-            activeLabel="Stop Recording"
-            idleLabel="Start Recording"
-            onClick={() => send('ToggleRecord')}
-          />
-        </div>
-      </section>
-
       {(state.audio.input || state.audio.media) && (
         <section className="space-y-2">
           <h3 className="text-sm sm:text-xs font-semibold uppercase tracking-wider text-ios-label2">Audio</h3>
@@ -612,24 +594,3 @@ function AudioRow({
   )
 }
 
-interface ToggleButtonProps {
-  active: boolean
-  activeLabel: string
-  idleLabel: string
-  onClick: () => void
-}
-
-function ToggleButton({ active, activeLabel, idleLabel, onClick }: ToggleButtonProps) {
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-xl border px-3 py-2.5 text-base sm:text-sm font-semibold transition-all duration-200 ease-out active:scale-[0.98] ${
-        active
-          ? 'border-transparent bg-ios-red text-white hover:bg-ios-red/85'
-          : 'border-transparent bg-ios-fill text-ios-label2 hover:bg-ios-fill2'
-      }`}
-    >
-      {active ? activeLabel : idleLabel}
-    </button>
-  )
-}
