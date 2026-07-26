@@ -2,7 +2,7 @@
 // and back. Naming convention: fullscreen scenes are a single source token
 // ("MAIN", "MEDIA"); splits are "<FEATURED> <SECONDARY>[ N]" where the first
 // token owns the featured slot and the numeric suffix picks the split style
-// (no suffix = equal split). Example: "MEDIA SECOND 4" = SDE video fullscreen
+// (no suffix = equal split). Example: "MEDIA SECOND 4" = media video fullscreen
 // with the Second cam floating in the corner card.
 
 export type SplitKey = 'equal' | 'large' | 'big-small' | 'overlay'
@@ -11,9 +11,9 @@ export type SourceKey = 'main' | 'second' | 'media'
 /** Name of the importable collection served at /scene-collection.json */
 export const COLLECTION_NAME = 'Dock Control'
 
-import { OVERLAY_SCENE } from './overlay'
+import { BACKGROUND_SCENE, OVERLAY_SCENE } from './overlay'
 
-/** The OBS media input that plays the SDE video */
+/** The OBS media input that plays the media video (SDE, highlight reel, anything) */
 export const MEDIA_INPUT = 'Media 0'
 
 export const SOURCES: readonly SourceKey[] = ['main', 'second', 'media']
@@ -97,8 +97,8 @@ const CORE_SCENES: readonly string[] = [
   OVERLAY_SCENE,
 ]
 
-/** Everything a fresh import ships — core plus the event screens */
-export const REQUIRED_SCENES: readonly string[] = [...CORE_SCENES, ...SCREENS.map((s) => s.scene)]
+/** Everything a fresh import ships — core plus the event screens and background */
+export const REQUIRED_SCENES: readonly string[] = [...CORE_SCENES, ...SCREENS.map((s) => s.scene), BACKGROUND_SCENE]
 
 // Core only: older-but-working installs shouldn't be flagged as broken —
 // the checklist offers the missing screens as an incremental one-click add.

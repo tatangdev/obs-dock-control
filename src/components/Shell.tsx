@@ -6,8 +6,8 @@ export default function Shell({ title, subtitle, children }: { title: string; su
   return (
     <div className="flex min-h-full items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        <h1 className="text-lg font-semibold">{title}</h1>
-        {subtitle && <p className="mt-1 text-xs text-ios-label3">{subtitle}</p>}
+        <h1 className="text-xl sm:text-lg font-semibold">{title}</h1>
+        {subtitle && <p className="mt-1 text-sm sm:text-xs text-ios-label3">{subtitle}</p>}
         <div className="mt-4">{children}</div>
       </div>
     </div>

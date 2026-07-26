@@ -10,7 +10,9 @@ import SetupPanel from '../components/SetupPanel'
 import Shell from '../components/Shell'
 import Toast from '../components/Toast'
 import type { ObsState } from '../../shared/protocol'
-import { isSetupReady, parseScene } from '../lib/scenes'
+import { MEDIA_INPUT, isSetupReady, parseScene } from '../lib/scenes'
+import type { Selection } from '../lib/scenes'
+import type { MediaPrefs } from '../components/MediaPanel'
 
 interface StoredSession {
   code: string
@@ -27,6 +29,27 @@ function loadStoredSession(): StoredSession | null {
 }
 
 type SessionStatus = 'none' | 'connecting' | 'live' | 'reconnecting'
+
+const DEFAULT_MEDIA_PREFS: MediaPrefs = { autoPlayFullscreen: true, autoPlayPip: false, autoReturn: true }
+
+function loadMediaPrefs(): MediaPrefs {
+  try {
+    const raw = localStorage.getItem('media-prefs')
+    if (raw) return { ...DEFAULT_MEDIA_PREFS, ...(JSON.parse(raw) as Partial<MediaPrefs>) }
+  } catch {
+    // fall through
+  }
+  // migrate the old single auto-return flag
+  return { ...DEFAULT_MEDIA_PREFS, autoReturn: localStorage.getItem('media-auto-return') !== '0' }
+}
+
+/** How media appears in the given selection, if at all */
+function mediaRole(sel: Selection | null): 'fullscreen' | 'pip' | null {
+  if (!sel) return null
+  if (sel.mode === 'fullscreen') return sel.source === 'media' ? 'fullscreen' : null
+  if (sel.mode === 'split') return sel.featured === 'media' || sel.secondary === 'media' ? 'pip' : null
+  return null
+}
 
 export default function Dock() {
   const { status: obsStatus, error: obsError, state, connect, call, query, subscribe, callError, clearCallError } =
@@ -57,10 +80,12 @@ export default function Dock() {
   stateRef.current = state
   const obsConnectedRef = useRef(false)
   obsConnectedRef.current = obsStatus === 'connected'
-  const [autoReturn, setAutoReturn] = useState(() => localStorage.getItem('media-auto-return') !== '0')
-  const autoReturnRef = useRef(autoReturn)
-  autoReturnRef.current = autoReturn
+  const [mediaPrefs, setMediaPrefs] = useState<MediaPrefs>(loadMediaPrefs)
+  const mediaPrefsRef = useRef(mediaPrefs)
+  mediaPrefsRef.current = mediaPrefs
   const prevLayoutRef = useRef<string | null>(null)
+  const lastSceneRef = useRef<string | null>(null)
+  const mediaNormalizedRef = useRef(false)
 
   const startRelay = useCallback(() => {
     setSessionStatus('connecting')
@@ -166,7 +191,7 @@ export default function Dock() {
     if (obsStatus === 'connected' && storedRef.current && !relayRef.current) startRelay()
   }, [obsStatus, startRelay])
 
-  // Remember the last non-media layout, and jump back to it when the SDE
+  // Remember the last non-media layout, and jump back to it when the media
   // video finishes playing on the fullscreen MEDIA scene (wedding flow: the
   // video ends and the stream lands back on the couple automatically).
   useEffect(() => {
@@ -180,7 +205,7 @@ export default function Dock() {
   useEffect(
     () =>
       subscribe(['MediaInputPlaybackEnded'], () => {
-        if (!autoReturnRef.current || !prevLayoutRef.current) return
+        if (!mediaPrefsRef.current.autoReturn || !prevLayoutRef.current) return
         const sel = stateRef.current ? parseScene(stateRef.current.currentScene) : null
         if (sel?.mode === 'fullscreen' && sel.source === 'media') {
           void callRef.current('SetCurrentProgramScene', { sceneName: prevLayoutRef.current })
@@ -189,9 +214,51 @@ export default function Dock() {
     [subscribe],
   )
 
-  function updateAutoReturn(value: boolean): void {
-    setAutoReturn(value)
-    localStorage.setItem('media-auto-return', value ? '1' : '0')
+  // App-driven auto-play: when a scene change brings media onto program (and
+  // the previous scene didn't show it), restart from 0:00 if that mode's
+  // preference says so. Moving between pip and fullscreen keeps playing.
+  useEffect(() => {
+    if (!state) return
+    const prev = lastSceneRef.current
+    lastSceneRef.current = state.currentScene
+    if (prev === null || prev === state.currentScene) return
+    const nowRole = mediaRole(parseScene(state.currentScene))
+    const prevRole = mediaRole(parseScene(prev))
+    if (!nowRole || prevRole) return
+    const enabled = nowRole === 'fullscreen' ? mediaPrefsRef.current.autoPlayFullscreen : mediaPrefsRef.current.autoPlayPip
+    if (!enabled || !stateRef.current?.media?.file) return
+    void callRef.current('TriggerMediaInputAction', {
+      inputName: MEDIA_INPUT,
+      mediaAction: 'OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART',
+    })
+  }, [state])
+
+  // Auto-play is app-driven now — make sure the OBS-side flag from older
+  // collections is off so it can't double-trigger or play when unwanted.
+  useEffect(() => {
+    if (mediaNormalizedRef.current || obsStatus !== 'connected' || !state?.media) return
+    mediaNormalizedRef.current = true
+    void query<{ inputSettings: Record<string, unknown> }>('GetInputSettings', { inputName: MEDIA_INPUT })
+      .then((r) => {
+        if (r.inputSettings['restart_on_activate'] !== false) {
+          return query('SetInputSettings', {
+            inputName: MEDIA_INPUT,
+            inputSettings: { restart_on_activate: false },
+          }).then(() => undefined)
+        }
+        return undefined
+      })
+      .catch(() => {
+        mediaNormalizedRef.current = false // retry on a later state change
+      })
+  }, [obsStatus, state, query])
+
+  function updateMediaPrefs(patch: Partial<MediaPrefs>): void {
+    setMediaPrefs((prev) => {
+      const next = { ...prev, ...patch }
+      localStorage.setItem('media-prefs', JSON.stringify(next))
+      return next
+    })
   }
 
   // Tell remotes when OBS itself drops or comes back on this machine
@@ -255,7 +322,7 @@ export default function Dock() {
     return (
       <Shell title="Connect to OBS" subtitle="This page runs on the streaming PC and talks to OBS directly.">
         {code !== null && (
-          <div className="mb-3 rounded-xl border animate-fade-in border-transparent bg-ios-orange/15 px-3 py-2 text-sm text-ios-orange">
+          <div className="mb-3 rounded-xl border animate-fade-in border-transparent bg-ios-orange/15 px-3 py-2 text-base sm:text-sm text-ios-orange">
             Session <span className="font-mono font-semibold">{code}</span> is still active — reconnecting to OBS
             automatically…
           </div>
@@ -274,13 +341,13 @@ export default function Dock() {
             />
           </Field>
           {obsStatus === 'error' && (
-            <div className="rounded-xl border border-transparent bg-ios-red/15 px-3 py-2 text-sm text-ios-red">
+            <div className="rounded-xl border border-transparent bg-ios-red/15 px-3 py-2 text-base sm:text-sm text-ios-red">
               {obsError ?? 'Could not connect to OBS.'}
             </div>
           )}
           <button
             disabled={obsStatus === 'connecting'}
-            className="w-full rounded-xl bg-ios-blue active:scale-[0.98] transition-all duration-200 ease-out px-3 py-2.5 text-sm font-semibold text-white hover:bg-ios-blue-light disabled:opacity-50"
+            className="w-full rounded-xl bg-ios-blue active:scale-[0.98] transition-all duration-200 ease-out px-3 py-2.5 text-base sm:text-sm font-semibold text-white hover:bg-ios-blue-light disabled:opacity-50"
           >
             {obsStatus === 'connecting' ? 'Connecting…' : 'Connect'}
           </button>
@@ -306,10 +373,10 @@ export default function Dock() {
               placeholder="e.g. 1234"
             />
           </Field>
-          {relayError && <p className="text-sm text-ios-red">{relayError}</p>}
+          {relayError && <p className="text-base sm:text-sm text-ios-red">{relayError}</p>}
           <button
             disabled={pin.length < 4 || sessionStatus === 'connecting'}
-            className="w-full rounded-xl bg-ios-blue active:scale-[0.98] transition-all duration-200 ease-out px-3 py-2.5 text-sm font-semibold text-white hover:bg-ios-blue-light disabled:opacity-50"
+            className="w-full rounded-xl bg-ios-blue active:scale-[0.98] transition-all duration-200 ease-out px-3 py-2.5 text-base sm:text-sm font-semibold text-white hover:bg-ios-blue-light disabled:opacity-50"
           >
             {sessionStatus === 'connecting' ? 'Starting…' : 'Start session'}
           </button>
@@ -321,16 +388,16 @@ export default function Dock() {
   return (
     <div className="mx-auto max-w-3xl p-4">
       {sessionStatus === 'reconnecting' && (
-        <div className="mb-3 rounded-xl border animate-fade-in border-transparent bg-ios-orange/15 px-3 py-2 text-sm text-ios-orange">
+        <div className="mb-3 rounded-xl border animate-fade-in border-transparent bg-ios-orange/15 px-3 py-2 text-base sm:text-sm text-ios-orange">
           Relay connection lost — reconnecting… OBS control keeps working locally.
         </div>
       )}
       <div className="mb-4 flex items-center justify-between rounded-2xl border border-transparent bg-ios-card px-4 py-3">
         <div>
-          <div className="text-xs text-ios-label2">Session code</div>
-          <div className="font-mono text-xl font-bold tracking-widest text-white">{code}</div>
+          <div className="text-sm sm:text-xs text-ios-label2">Session code</div>
+          <div className="font-mono text-2xl sm:text-xl font-bold tracking-widest text-white">{code}</div>
         </div>
-        <div className="text-right text-xs text-ios-label2">
+        <div className="text-right text-sm sm:text-xs text-ios-label2">
           <div>{sessionName}</div>
           <div>
             {remoteCount} remote{remoteCount === 1 ? '' : 's'} connected
@@ -349,11 +416,11 @@ export default function Dock() {
         </div>
       </div>
       {state && (
-        <div className="flex items-start gap-4">
+        <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:gap-4">
           <div className="min-w-0 flex-1">
-            <ControlPanel state={state} send={call} autoReturn={{ value: autoReturn, onChange: updateAutoReturn }} />
+            <ControlPanel state={state} send={call} mediaPrefs={{ value: mediaPrefs, onChange: updateMediaPrefs }} />
           </div>
-          <div className="flex w-52 shrink-0 flex-col gap-5">
+          <div className="flex w-full shrink-0 flex-col gap-5 sm:w-52">
             <LayerPanel
               layers={state.layers}
               runningText={state.runningText}
@@ -387,12 +454,12 @@ export default function Dock() {
 }
 
 const inputCls =
-  'w-full rounded-xl border border-transparent bg-ios-fill px-3 py-2 text-sm text-white outline-none focus:border-ios-blue'
+  'w-full rounded-xl border border-transparent bg-ios-fill px-3 py-2 text-base sm:text-sm text-white outline-none focus:border-ios-blue'
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs text-ios-label2">{label}</span>
+      <span className="mb-1 block text-sm sm:text-xs text-ios-label2">{label}</span>
       {children}
     </label>
   )

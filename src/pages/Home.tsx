@@ -15,8 +15,8 @@ export default function Home() {
           to="/dock"
           className="rounded-2xl border border-transparent bg-ios-card p-6 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-ios-blue"
         >
-          <div className="text-lg font-semibold">Dock (Server)</div>
-          <p className="mt-1 text-sm text-ios-label2">
+          <div className="text-xl sm:text-lg font-semibold">Dock (Server)</div>
+          <p className="mt-1 text-base sm:text-sm text-ios-label2">
             Add this page as a custom browser dock inside OBS. It connects to OBS, guides first-time setup, and hosts
             the session remotes join.
           </p>
@@ -25,15 +25,15 @@ export default function Home() {
           to="/remote"
           className="rounded-2xl border border-transparent bg-ios-card p-6 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-ios-blue"
         >
-          <div className="text-lg font-semibold">Remote</div>
-          <p className="mt-1 text-sm text-ios-label2">
+          <div className="text-xl sm:text-lg font-semibold">Remote</div>
+          <p className="mt-1 text-base sm:text-sm text-ios-label2">
             Enter the session code and PIN to switch layouts and control the stream from a phone, tablet, or another
             computer.
           </p>
         </Link>
       </div>
 
-      <p className="max-w-md text-center text-xs text-ios-label3">
+      <p className="max-w-md text-center text-sm sm:text-xs text-ios-label3">
         In OBS: Docks → Custom Browser Docks → add this site&apos;s <code>/dock</code> URL.
       </p>
     </div>

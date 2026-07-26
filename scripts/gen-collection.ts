@@ -10,7 +10,7 @@ import { writeFileSync, mkdirSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { OVERLAY_LAYERS, OVERLAY_SCENE } from '../src/lib/overlay'
+import { BACKGROUND_INPUT, BACKGROUND_SCENE, OVERLAY_LAYERS, OVERLAY_SCENE } from '../src/lib/overlay'
 import type { OverlayLayerSpec } from '../src/lib/overlay'
 import { SCREENS } from '../src/lib/scenes'
 
@@ -242,10 +242,11 @@ function mediaChain() {
     uuid: U.media[0],
     id: 'ffmpeg_source',
     versioned_id: 'ffmpeg_source',
-    // File intentionally unset — the operator loads the SDE in OBS.
-    // restart_on_activate makes the video start from 0:00 whenever a MEDIA
-    // scene goes to program; keeping the last frame avoids a black flash.
-    settings: { looping: false, restart_on_activate: true, clear_on_media_end: false },
+    // File intentionally unset — the operator loads the video in OBS.
+    // Auto-play is app-driven (per-mode preferences in the dock), so the
+    // OBS-side restart_on_activate stays off; keeping the last frame on end
+    // avoids a black flash.
+    settings: { looping: false, restart_on_activate: false, clear_on_media_end: false },
     ...rest,
     hotkeys,
   }
@@ -438,7 +439,26 @@ const screenScenes = SCREENS.map((spec) =>
   ]),
 )
 
-// Nest the OVERLAY scene as the top-most item of every program scene
+// --- shared background: one image, nested beneath every program scene --------
+const BACKGROUND_UUID = uuidFor(`scene:${BACKGROUND_SCENE}`)
+const backgroundSource = {
+  prev_ver: PREV_VER,
+  name: BACKGROUND_INPUT,
+  uuid: uuidFor(`source:${BACKGROUND_INPUT}`),
+  id: 'image_source',
+  versioned_id: 'image_source',
+  settings: {}, // operator sets the shared 1920x1080 background in OBS, once
+  ...sourceBoilerplate(0, {}),
+}
+const backgroundScene = scene(BACKGROUND_SCENE, BACKGROUND_UUID, 1, [
+  item(BACKGROUND_INPUT, uuidFor(`source:${BACKGROUND_INPUT}`), 1, [0.0, 0.0], posRel([0.0, 0.0]), [1.0, 1.0], {
+    boundsType: 2,
+    bounds: [1920.0, 1080.0],
+  }),
+])
+
+// Nest the OVERLAY scene as the top-most item and the BACKGROUND scene as the
+// bottom-most item of every program scene
 function addOverlayTo(programScene: Record<string, any>): void {
   const id = programScene.settings.id_counter + 1
   programScene.settings.id_counter = id
@@ -446,7 +466,19 @@ function addOverlayTo(programScene: Record<string, any>): void {
   programScene.hotkeys[`libobs.show_scene_item.${id}`] = []
   programScene.hotkeys[`libobs.hide_scene_item.${id}`] = []
 }
-for (const s of [...scenes, ...mediaScenes, ...screenScenes]) addOverlayTo(s)
+function addBackgroundTo(programScene: Record<string, any>): void {
+  const id = programScene.settings.id_counter + 1
+  programScene.settings.id_counter = id
+  programScene.settings.items.unshift(
+    item(BACKGROUND_SCENE, BACKGROUND_UUID, id, [0.0, 0.0], posRel([0.0, 0.0]), [1.0, 1.0]),
+  )
+  programScene.hotkeys[`libobs.show_scene_item.${id}`] = []
+  programScene.hotkeys[`libobs.hide_scene_item.${id}`] = []
+}
+for (const s of [...scenes, ...mediaScenes, ...screenScenes]) {
+  addBackgroundTo(s)
+  addOverlayTo(s)
+}
 
 // --- assemble ----------------------------------------------------------------
 const collection = {
@@ -457,6 +489,7 @@ const collection = {
     'MAIN SECOND 3', 'SECOND MAIN 3', 'MAIN SECOND 4', 'SECOND MAIN 4',
     ...mediaScenes.map((s) => s.name as string),
     ...SCREENS.map((s) => s.scene),
+    BACKGROUND_SCENE,
     OVERLAY_SCENE,
   ].map((name) => ({ name })),
   current_scene: 'MAIN',
@@ -505,6 +538,8 @@ const collection = {
     ...mediaScenes,
     ...screenSources,
     ...screenScenes,
+    backgroundSource,
+    backgroundScene,
     ...overlaySources,
     overlayScene,
   ],

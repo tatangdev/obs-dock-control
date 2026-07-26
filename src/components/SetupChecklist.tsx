@@ -2,8 +2,16 @@ import { useCallback, useEffect, useState } from 'react'
 import type { OBSEventTypes } from 'obs-websocket-js'
 import type { LayerInfo, MediaStatus } from '../../shared/protocol'
 import type { ObsQuery, ObsSubscribe } from '../lib/useObs'
-import { SCREENS, createScreenScenes, isSetupReady } from '../lib/scenes'
-import { LOGO_INPUT, OVERLAY_LAYERS, OVERLAY_SCENE, createOverlayLayers } from '../lib/overlay'
+import { SCREENS, createScreenScenes, isSetupReady, parseScene } from '../lib/scenes'
+import {
+  BACKGROUND_INPUT,
+  BACKGROUND_SCENE,
+  LOGO_INPUT,
+  OVERLAY_LAYERS,
+  OVERLAY_SCENE,
+  createBackgroundSetup,
+  createOverlayLayers,
+} from '../lib/overlay'
 
 interface Guide {
   title: string
@@ -85,6 +93,7 @@ export default function SetupChecklist({
   // before they became dedicated scenes
   const screenLeftovers = layers.filter((l) => SCREENS.some((s) => s.input === l.name))
   const screenLeftoversKey = screenLeftovers.map((l) => l.id).join(',')
+  const backgroundMissing = !scenes.includes(BACKGROUND_SCENE)
 
   const runChecks = useCallback(async () => {
     const found: Item[] = []
@@ -108,10 +117,11 @@ export default function SetupChecklist({
       return // source checks are meaningless until the collection is in
     }
 
-    const [mainCam, secondCam, logoSet, ...screenResults] = await Promise.all([
+    const [mainCam, secondCam, logoSet, backgroundSet, ...screenResults] = await Promise.all([
       inputHasSetting(query, 'Main Cam 0', DEVICE_KEYS),
       inputHasSetting(query, 'Second Cam 0', DEVICE_KEYS),
       inputHasSetting(query, LOGO_INPUT, ['file']),
+      inputHasSetting(query, BACKGROUND_INPUT, ['file']),
       ...SCREENS.map((s) => inputHasSetting(query, s.input, ['file'])),
     ])
 
@@ -151,14 +161,14 @@ export default function SetupChecklist({
     if (!mediaFileSet) {
       found.push({
         key: 'media',
-        label: 'SDE video',
+        label: 'Media video',
         problem: 'No video file loaded — Media mode stays locked.',
         guide: {
-          title: 'Load the SDE video',
+          title: 'Load the media video',
           steps: [
             'In OBS, open the MEDIA scene.',
             'Double-click the "Media 0" source.',
-            'Browse to the exported SDE file and press OK.',
+            'Browse to the video file and press OK.',
             'Playback controls appear in the Media panel here.',
           ],
         },
@@ -230,6 +240,45 @@ export default function SetupChecklist({
       })
     }
 
+    if (backgroundMissing) {
+      found.push({
+        key: 'background-update',
+        label: 'Shared background available',
+        problem: 'Split layouts show black behind the tiles — one image can fill every scene.',
+        fix: {
+          label: 'Add background',
+          run: () =>
+            createBackgroundSetup(
+              query,
+              scenes.filter((name) => parseScene(name) !== null),
+            ),
+        },
+        guide: {
+          title: 'Add the shared background',
+          steps: [
+            'Press "Add background" — the dock creates a BACKGROUND scene and slots it beneath every layout.',
+            'Set the image once: in OBS, open the BACKGROUND scene, double-click "Background", and pick the 1920×1080 design.',
+            'Every layout — fullscreen, splits, media — shows it automatically. Change it once, everything follows.',
+          ],
+        },
+      })
+    } else if (backgroundSet === false) {
+      found.push({
+        key: 'background',
+        label: 'Background image',
+        problem: 'No image set — split layouts show black behind the tiles.',
+        guide: {
+          title: 'Set the shared background',
+          steps: [
+            'In OBS, open the BACKGROUND scene.',
+            'Double-click the "Background" source.',
+            'Browse to the 1920×1080 background design and press OK.',
+            'Every layout shows it — change it here once and everything follows.',
+          ],
+        },
+      })
+    }
+
     if (missingScreens.length === 0 && screenLeftovers.length > 0) {
       found.push({
         key: 'screen-leftovers',
@@ -292,7 +341,16 @@ export default function SetupChecklist({
 
     setItems(found)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- missing lists are keyed by their joined strings
-  }, [query, scenesReady, mediaFileSet, runningTextEmpty, missingLayersKey, missingScreensKey, screenLeftoversKey])
+  }, [
+    query,
+    scenesReady,
+    mediaFileSet,
+    runningTextEmpty,
+    missingLayersKey,
+    missingScreensKey,
+    screenLeftoversKey,
+    backgroundMissing,
+  ])
 
   useEffect(() => {
     void runChecks()
@@ -304,26 +362,26 @@ export default function SetupChecklist({
 
   return (
     <section className="animate-fade-in space-y-2">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-ios-orange">Needs attention</h3>
+      <h3 className="text-sm sm:text-xs font-semibold uppercase tracking-wider text-ios-orange">Needs attention</h3>
       <div className="divide-y divide-ios-sep/60 overflow-hidden rounded-2xl bg-ios-card">
         {items.map((item) => (
           <div key={item.key} className="space-y-1 px-3 py-2.5">
             <div className="flex items-center gap-2">
               <span className="h-2 w-2 shrink-0 rounded-full bg-ios-orange/90" />
-              <span className="min-w-0 flex-1 truncate text-xs font-medium text-white">{item.label}</span>
+              <span className="min-w-0 flex-1 truncate text-sm sm:text-xs font-medium text-white">{item.label}</span>
               <button
                 title={`How to fix: ${item.label}`}
                 onClick={() => setGuide(item)}
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-ios-fill text-xs font-bold text-ios-blue transition-all duration-150 ease-out hover:bg-ios-fill2 active:scale-90"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-ios-fill text-sm sm:text-xs font-bold text-ios-blue transition-all duration-150 ease-out hover:bg-ios-fill2 active:scale-90"
               >
                 ?
               </button>
             </div>
-            <p className="text-[11px] leading-snug text-ios-label3">{item.problem}</p>
+            <p className="text-xs leading-snug text-ios-label3">{item.problem}</p>
             {item.setupAction && (
               <button
                 onClick={onOpenSetup}
-                className="mt-1 w-full rounded-xl bg-ios-blue px-3 py-1.5 text-xs font-semibold text-white transition-all duration-200 ease-out hover:bg-ios-blue-light active:scale-[0.98]"
+                className="mt-1 w-full rounded-xl bg-ios-blue px-3 py-1.5 text-sm sm:text-xs font-semibold text-white transition-all duration-200 ease-out hover:bg-ios-blue-light active:scale-[0.98]"
               >
                 Open setup
               </button>
@@ -341,7 +399,7 @@ export default function SetupChecklist({
                     })
                     .finally(() => setFixing(null))
                 }}
-                className="mt-1 w-full rounded-xl bg-ios-blue px-3 py-1.5 text-xs font-semibold text-white transition-all duration-200 ease-out hover:bg-ios-blue-light active:scale-[0.98] disabled:opacity-50"
+                className="mt-1 w-full rounded-xl bg-ios-blue px-3 py-1.5 text-sm sm:text-xs font-semibold text-white transition-all duration-200 ease-out hover:bg-ios-blue-light active:scale-[0.98] disabled:opacity-50"
               >
                 {fixing === item.key ? 'Adding…' : item.fix.label}
               </button>
@@ -349,7 +407,7 @@ export default function SetupChecklist({
           </div>
         ))}
       </div>
-      {fixError && <p className="text-[11px] text-ios-red">{fixError}</p>}
+      {fixError && <p className="text-xs text-ios-red">{fixError}</p>}
 
       {guide && (
         <div
@@ -361,7 +419,7 @@ export default function SetupChecklist({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold">{guide.guide.title}</h3>
+              <h3 className="text-base sm:text-sm font-semibold">{guide.guide.title}</h3>
               <button
                 onClick={() => setGuide(null)}
                 className="rounded-md px-1.5 text-ios-blue transition-colors hover:text-ios-blue-light"
@@ -371,8 +429,8 @@ export default function SetupChecklist({
             </div>
             <ol className="space-y-2">
               {guide.guide.steps.map((step, i) => (
-                <li key={i} className="flex gap-3 text-sm text-ios-label2">
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ios-fill text-[10px] font-bold text-white">
+                <li key={i} className="flex gap-3 text-base sm:text-sm text-ios-label2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ios-fill text-xs font-bold text-white">
                     {i + 1}
                   </span>
                   <span className="min-w-0">{step}</span>
@@ -385,7 +443,7 @@ export default function SetupChecklist({
                   setGuide(null)
                   onOpenSetup()
                 }}
-                className="mt-4 w-full rounded-xl bg-ios-blue px-3 py-2 text-sm font-semibold text-white transition-all duration-200 ease-out hover:bg-ios-blue-light active:scale-[0.98]"
+                className="mt-4 w-full rounded-xl bg-ios-blue px-3 py-2 text-base sm:text-sm font-semibold text-white transition-all duration-200 ease-out hover:bg-ios-blue-light active:scale-[0.98]"
               >
                 Open setup
               </button>

@@ -20,17 +20,26 @@ function baseName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path
 }
 
+export interface MediaPrefs {
+  /** Restart from 0:00 when a MEDIA fullscreen scene goes to program */
+  autoPlayFullscreen: boolean
+  /** Restart from 0:00 when media enters a split (PiP) slot on program */
+  autoPlayPip: boolean
+  /** Return to the previous layout when the video finishes on fullscreen */
+  autoReturn: boolean
+}
+
 interface MediaPanelProps {
   media: MediaStatus
   send: SendCommand
-  /** Provided by the dock only: "return to the previous layout when the video ends" */
-  autoReturn?: { value: boolean; onChange: (value: boolean) => void }
+  /** Provided by the dock only — the dock executes these behaviors */
+  prefs?: { value: MediaPrefs; onChange: (patch: Partial<MediaPrefs>) => void }
 }
 
-// Transport controls for the SDE video. Mirrored like everything else: state
+// Transport controls for the media video. Mirrored like everything else: state
 // comes from the dock's snapshots, actions go through `send` (direct on the
 // dock, via the relay on remotes). The file itself is set in OBS on Media 0.
-export default function MediaPanel({ media, send, autoReturn }: MediaPanelProps) {
+export default function MediaPanel({ media, send, prefs }: MediaPanelProps) {
   // Slider stays under local control while scrubbing so 1s state polls don't
   // fight the operator's finger. The ref mirrors the latest value because a
   // quick click fires input+pointerup before state flushes — committing from
@@ -91,14 +100,14 @@ export default function MediaPanel({ media, send, autoReturn }: MediaPanelProps)
 
   return (
     <section className="space-y-2">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-ios-label2">Media (SDE video)</h3>
+      <h3 className="text-sm sm:text-xs font-semibold uppercase tracking-wider text-ios-label2">Media</h3>
       <div className="space-y-3 rounded-2xl border border-transparent bg-ios-card p-3">
         <div className="flex items-center justify-between gap-2">
-          <span className="min-w-0 truncate text-xs text-ios-label2">
+          <span className="min-w-0 truncate text-sm sm:text-xs text-ios-label2">
             {media.file ? baseName(media.file) : 'No video loaded'}
           </span>
           {hasFile && (
-            <span className="shrink-0 text-xs text-ios-label3 capitalize">{media.state}</span>
+            <span className="shrink-0 text-sm sm:text-xs text-ios-label3 capitalize">{media.state}</span>
           )}
         </div>
 
@@ -106,7 +115,7 @@ export default function MediaPanel({ media, send, autoReturn }: MediaPanelProps)
           <>
             {hasDuration && (
             <div className="flex items-center gap-2">
-              <span className="w-10 shrink-0 text-right text-xs tabular-nums text-ios-label2">{formatTime(cursor)}</span>
+              <span className="w-10 shrink-0 text-right text-sm sm:text-xs tabular-nums text-ios-label2">{formatTime(cursor)}</span>
               <input
                 type="range"
                 min={0}
@@ -124,7 +133,7 @@ export default function MediaPanel({ media, send, autoReturn }: MediaPanelProps)
                 onBlur={commitScrub}
                 className="min-w-0 flex-1"
               />
-              <span className="w-10 shrink-0 text-xs tabular-nums text-ios-label2">{formatTime(media.durationMs)}</span>
+              <span className="w-10 shrink-0 text-sm sm:text-xs tabular-nums text-ios-label2">{formatTime(media.durationMs)}</span>
             </div>
             )}
 
@@ -132,7 +141,7 @@ export default function MediaPanel({ media, send, autoReturn }: MediaPanelProps)
               <button
                 onClick={cue}
                 title="Cue: rewind to 0:00 and hold paused, armed for the moment — switch to Media and press Play when it's time"
-                className="rounded-xl bg-ios-fill px-3 py-2 text-xs font-semibold text-ios-blue transition-all duration-200 ease-out hover:bg-ios-fill2 active:scale-[0.98]"
+                className="rounded-xl bg-ios-fill px-3 py-2 text-sm sm:text-xs font-semibold text-ios-blue transition-all duration-200 ease-out hover:bg-ios-fill2 active:scale-[0.98]"
               >
                 Cue
               </button>
@@ -145,7 +154,7 @@ export default function MediaPanel({ media, send, autoReturn }: MediaPanelProps)
                       ? 'Replay: the video finished — play it again from the beginning'
                       : 'Play: start or resume playback from the current position'
                 }
-                className={`rounded-xl px-3 py-2 text-xs font-semibold transition-all duration-200 ease-out active:scale-[0.98] ${
+                className={`rounded-xl px-3 py-2 text-sm sm:text-xs font-semibold transition-all duration-200 ease-out active:scale-[0.98] ${
                   playing ? 'bg-ios-fill2 text-white hover:bg-[#48484a]' : 'bg-ios-blue text-white hover:bg-ios-blue-light'
                 }`}
               >
@@ -154,28 +163,48 @@ export default function MediaPanel({ media, send, autoReturn }: MediaPanelProps)
               <button
                 onClick={() => trigger(ACTION.restart)}
                 title="Restart: play immediately from 0:00 — use while the video is live on stream and needs to start over"
-                className="rounded-xl bg-ios-fill px-3 py-2 text-xs font-semibold text-ios-blue transition-all duration-200 ease-out hover:bg-ios-fill2 active:scale-[0.98]"
+                className="rounded-xl bg-ios-fill px-3 py-2 text-sm sm:text-xs font-semibold text-ios-blue transition-all duration-200 ease-out hover:bg-ios-fill2 active:scale-[0.98]"
               >
                 Restart
               </button>
             </div>
           </>
         ) : (
-          <p className="text-xs text-ios-label3">
-            Load the exported SDE file on the <span className="text-ios-label2">{MEDIA_INPUT}</span> source in OBS.
+          <p className="text-sm sm:text-xs text-ios-label3">
+            Load a video on the <span className="text-ios-label2">{MEDIA_INPUT}</span> source in OBS.
           </p>
         )}
 
-        {autoReturn && (
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-ios-label2">
-            <input
-              type="checkbox"
-              checked={autoReturn.value}
-              onChange={(e) => autoReturn.onChange(e.target.checked)}
-              className="accent-ios-blue"
-            />
-            Return to the previous layout when the video ends
-          </label>
+        {prefs && (
+          <div className="space-y-1.5">
+            <label className="flex cursor-pointer items-center gap-2 text-sm sm:text-xs text-ios-label2">
+              <input
+                type="checkbox"
+                checked={prefs.value.autoPlayFullscreen}
+                onChange={(e) => prefs.onChange({ autoPlayFullscreen: e.target.checked })}
+                className="accent-ios-blue"
+              />
+              Auto-play when Media goes fullscreen
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 text-sm sm:text-xs text-ios-label2">
+              <input
+                type="checkbox"
+                checked={prefs.value.autoPlayPip}
+                onChange={(e) => prefs.onChange({ autoPlayPip: e.target.checked })}
+                className="accent-ios-blue"
+              />
+              Auto-play in Picture in Picture
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 text-sm sm:text-xs text-ios-label2">
+              <input
+                type="checkbox"
+                checked={prefs.value.autoReturn}
+                onChange={(e) => prefs.onChange({ autoReturn: e.target.checked })}
+                className="accent-ios-blue"
+              />
+              Return to the previous layout when the video ends
+            </label>
+          </div>
         )}
       </div>
     </section>

@@ -47,8 +47,8 @@ export default function LayerPanel({ layers, runningText, currentScene, scenes, 
   if (layers.length === 0 && screenRows.length === 0) {
     return (
       <aside className="space-y-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-ios-label2">Layers</h3>
-        <p className="text-xs text-ios-label3">
+        <h3 className="text-sm sm:text-xs font-semibold uppercase tracking-wider text-ios-label2">Layers</h3>
+        <p className="text-sm sm:text-xs text-ios-label3">
           No layers — run Setup to import the collection with the OVERLAY scene.
         </p>
       </aside>
@@ -57,14 +57,14 @@ export default function LayerPanel({ layers, runningText, currentScene, scenes, 
 
   return (
     <aside className="space-y-2">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-ios-label2">Layers</h3>
+      <h3 className="text-sm sm:text-xs font-semibold uppercase tracking-wider text-ios-label2">Layers</h3>
       <div className="divide-y divide-ios-sep/60 overflow-hidden rounded-2xl bg-ios-card">
         {layers.map((layer) => {
           const isText = layer.name === RUNNING_TEXT_INPUT
           return (
             <div key={layer.id} className="px-3 py-2">
               <div className="flex items-center justify-between gap-2">
-                <span className={`min-w-0 truncate text-xs ${layer.enabled ? 'text-white' : 'text-ios-label3'}`}>
+                <span className={`min-w-0 truncate text-sm sm:text-xs ${layer.enabled ? 'text-white' : 'text-ios-label3'}`}>
                   {layer.name}
                 </span>
                 <div className="flex shrink-0 items-center gap-1.5">
@@ -75,7 +75,7 @@ export default function LayerPanel({ layers, runningText, currentScene, scenes, 
                         setDraft(runningText)
                         setEditorOpen((v) => !v)
                       }}
-                      className="text-xs text-ios-blue transition-colors hover:text-ios-blue-light"
+                      className="text-sm sm:text-xs text-ios-blue transition-colors hover:text-ios-blue-light"
                     >
                       Edit
                     </button>
@@ -84,7 +84,7 @@ export default function LayerPanel({ layers, runningText, currentScene, scenes, 
                 </div>
               </div>
               {isText && runningText !== null && !editorOpen && runningText.trim() !== '' && (
-                <p className="mt-1 truncate text-[10px] text-ios-label3">{runningText}</p>
+                <p className="mt-1 truncate text-xs text-ios-label3">{runningText}</p>
               )}
               {isText && editorOpen && (
                 <div className="mt-2 animate-fade-in space-y-1.5">
@@ -93,18 +93,18 @@ export default function LayerPanel({ layers, runningText, currentScene, scenes, 
                     onChange={(e) => setDraft(e.target.value)}
                     rows={3}
                     placeholder="Announcement text…"
-                    className="w-full resize-none rounded-xl border border-transparent bg-ios-fill px-2 py-1.5 text-xs text-white outline-none transition-colors duration-200 ease-out focus:border-ios-blue"
+                    className="w-full resize-none rounded-xl border border-transparent bg-ios-fill px-2 py-1.5 text-sm sm:text-xs text-white outline-none transition-colors duration-200 ease-out focus:border-ios-blue"
                   />
                   <div className="flex justify-end gap-2">
                     <button
                       onClick={() => setEditorOpen(false)}
-                      className="text-xs text-ios-label2 transition-colors hover:text-white"
+                      className="text-sm sm:text-xs text-ios-label2 transition-colors hover:text-white"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={applyText}
-                      className="rounded-xl bg-ios-blue px-3 py-1 text-xs font-semibold text-white transition-all duration-200 ease-out hover:bg-ios-blue-light active:scale-[0.98]"
+                      className="rounded-xl bg-ios-blue px-3 py-1 text-sm sm:text-xs font-semibold text-white transition-all duration-200 ease-out hover:bg-ios-blue-light active:scale-[0.98]"
                     >
                       Apply
                     </button>
@@ -112,7 +112,7 @@ export default function LayerPanel({ layers, runningText, currentScene, scenes, 
                 </div>
               )}
               {layer.name === LOGO_INPUT && layer.enabled && (
-                <p className="mt-1 text-[10px] text-ios-label3">Image is set in OBS on the Logo source.</p>
+                <p className="mt-1 text-xs text-ios-label3">Image is set in OBS on the Logo source.</p>
               )}
             </div>
           )
@@ -122,7 +122,7 @@ export default function LayerPanel({ layers, runningText, currentScene, scenes, 
           const on = currentScene === spec.scene
           return (
             <div key={spec.key} className="flex items-center justify-between gap-2 px-3 py-2">
-              <span className={`min-w-0 truncate text-xs ${on ? 'text-white' : 'text-ios-label3'}`}>
+              <span className={`min-w-0 truncate text-sm sm:text-xs ${on ? 'text-white' : 'text-ios-label3'}`}>
                 {spec.input}
               </span>
               <Switch
@@ -145,12 +145,12 @@ function Switch({ on, label, onToggle }: { on: boolean; label: string; onToggle:
       aria-checked={on}
       title={label}
       onClick={onToggle}
-      className={`h-6 w-10 shrink-0 rounded-full p-0.5 transition-colors duration-200 ease-out ${
+      className={`h-5 w-9 shrink-0 rounded-full p-0.5 transition-colors duration-200 ease-out ${
         on ? 'bg-ios-green' : 'bg-ios-fill2'
       }`}
     >
       <span
-        className={`block h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ease-out ${
+        className={`block h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 ease-out ${
           on ? 'translate-x-4' : 'translate-x-0'
         }`}
       />

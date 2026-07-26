@@ -108,11 +108,11 @@ export default function SetupPanel({ query, subscribe, scenes, onClose }: SetupP
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold">OBS setup</h3>
+          <h3 className="text-base sm:text-sm font-semibold">OBS setup</h3>
           <div className="flex items-center gap-1">
             <button
               onClick={() => void runChecks()}
-              className="rounded-md px-1.5 text-xs text-ios-blue transition-colors hover:text-ios-blue-light"
+              className="rounded-md px-1.5 text-sm sm:text-xs text-ios-blue transition-colors hover:text-ios-blue-light"
             >
               Refresh
             </button>
@@ -123,18 +123,30 @@ export default function SetupPanel({ query, subscribe, scenes, onClose }: SetupP
         </div>
 
         {error && (
-          <div className="mb-3 rounded-xl border border-transparent bg-ios-red/15 px-3 py-2 text-sm text-ios-red">
+          <div className="mb-3 rounded-xl border border-transparent bg-ios-red/15 px-3 py-2 text-base sm:text-sm text-ios-red">
             {error}
           </div>
         )}
 
         {!checks ? (
-          <p className="text-sm text-ios-label2">Checking OBS…</p>
+          <p className="text-base sm:text-sm text-ios-label2">Checking OBS…</p>
         ) : (
           <div className="space-y-4">
             {scenesReady ? (
-              <div className="animate-fade-in rounded-xl border border-transparent bg-ios-green/15 px-3 py-2 text-sm text-ios-green">
-                All {REQUIRED_SCENES.length} scenes are ready.
+              <div className="animate-fade-in space-y-2">
+                <div className="rounded-xl border border-transparent bg-ios-green/15 px-3 py-2 text-base sm:text-sm text-ios-green">
+                  All {REQUIRED_SCENES.length} scenes are ready.
+                </div>
+                <div className="flex items-center justify-between gap-2 px-1 text-sm sm:text-xs">
+                  <span className="text-ios-label3">Setting up another machine?</span>
+                  <a
+                    href="/scene-collection.json"
+                    download="dock-control-collection.json"
+                    className="shrink-0 text-ios-blue transition-colors hover:text-ios-blue-light"
+                  >
+                    Download collection file
+                  </a>
+                </div>
               </div>
             ) : (
               <>
@@ -143,7 +155,7 @@ export default function SetupPanel({ query, subscribe, scenes, onClose }: SetupP
                     {PLUGINS.map((p) => {
                       const ok = checks[p.key]
                       return (
-                        <div key={p.key} className="flex items-center justify-between text-sm">
+                        <div key={p.key} className="flex items-center justify-between text-base sm:text-sm">
                           <span className="flex items-center gap-2">
                             <StatusDot ok={ok} />
                             {p.name}
@@ -153,7 +165,7 @@ export default function SetupPanel({ query, subscribe, scenes, onClose }: SetupP
                               href={p.url}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-xs text-ios-blue hover:text-ios-blue-light"
+                              className="text-sm sm:text-xs text-ios-blue hover:text-ios-blue-light"
                             >
                               download ↗
                             </a>
@@ -162,12 +174,12 @@ export default function SetupPanel({ query, subscribe, scenes, onClose }: SetupP
                       )
                     })}
                     {checks.masks === null && (
-                      <p className="text-xs text-ios-label3">
+                      <p className="text-sm sm:text-xs text-ios-label3">
                         Advanced Masks can&apos;t be verified on this OBS version — make sure it&apos;s installed.
                       </p>
                     )}
                     {!checks.move && (
-                      <p className="text-xs text-ios-label3">
+                      <p className="text-sm sm:text-xs text-ios-label3">
                         Move Transition is detected after the collection is active.
                       </p>
                     )}
@@ -178,14 +190,14 @@ export default function SetupPanel({ query, subscribe, scenes, onClose }: SetupP
                   <a
                     href="/scene-collection.json"
                     download="dock-control-collection.json"
-                    className="inline-block rounded-xl bg-ios-fill px-3 py-1.5 text-xs font-semibold text-ios-blue transition-all duration-200 ease-out hover:bg-ios-fill2 active:scale-[0.98]"
+                    className="inline-block rounded-xl bg-ios-fill px-3 py-1.5 text-sm sm:text-xs font-semibold text-ios-blue transition-all duration-200 ease-out hover:bg-ios-fill2 active:scale-[0.98]"
                   >
                     Download collection file
                   </a>
                 </Step>
 
                 <Step n={3} title="Import it in OBS">
-                  <p className="text-xs text-ios-label2">
+                  <p className="text-sm sm:text-xs text-ios-label2">
                     OBS menu → <span className="text-white">Scene Collection → Import</span> → choose the downloaded
                     file. This panel updates by itself when it&apos;s done.
                   </p>
@@ -193,19 +205,19 @@ export default function SetupPanel({ query, subscribe, scenes, onClose }: SetupP
 
                 <Step n={4} title={`Activate "${COLLECTION_NAME}"`}>
                   {isActive ? (
-                    <p className="flex items-center gap-2 text-sm text-white">
+                    <p className="flex items-center gap-2 text-base sm:text-sm text-white">
                       <StatusDot ok /> Active
                     </p>
                   ) : imported ? (
                     <button
                       onClick={() => void activate()}
                       disabled={activating}
-                      className="rounded-xl bg-ios-blue px-3 py-1.5 text-xs font-semibold text-white transition-all duration-200 ease-out hover:bg-ios-blue active:scale-[0.98] disabled:opacity-50"
+                      className="rounded-xl bg-ios-blue px-3 py-1.5 text-sm sm:text-xs font-semibold text-white transition-all duration-200 ease-out hover:bg-ios-blue active:scale-[0.98] disabled:opacity-50"
                     >
                       {activating ? 'Switching…' : 'Switch to it now'}
                     </button>
                   ) : (
-                    <p className="flex items-center gap-2 text-sm text-ios-label2">
+                    <p className="flex items-center gap-2 text-base sm:text-sm text-ios-label2">
                       <StatusDot ok={false} /> Not imported yet
                     </p>
                   )}
@@ -215,8 +227,8 @@ export default function SetupPanel({ query, subscribe, scenes, onClose }: SetupP
 
             {(isActive || scenesReady) && (
               <div className="animate-fade-in space-y-2">
-                <div className="text-sm font-medium text-white">Cameras</div>
-                <p className="text-xs text-ios-label3">
+                <div className="text-base sm:text-sm font-medium text-white">Cameras</div>
+                <p className="text-sm sm:text-xs text-ios-label3">
                   Pick each camera — the thumbnail shows what it sees. Every layout follows automatically.
                 </p>
                 <CameraRow inputName="Main Cam 0" label="Camera 1 (Main)" query={query} />
@@ -309,15 +321,15 @@ function CameraRow({ inputName, label, query }: { inputName: string; label: stri
         {thumb ? (
           <img src={thumb} alt={`${label} preview`} className="h-full w-full object-cover" />
         ) : (
-          <div className="flex h-full items-center justify-center text-[9px] text-ios-label3">no signal</div>
+          <div className="flex h-full items-center justify-center text-xs text-ios-label3">no signal</div>
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="mb-1 text-xs text-ios-label2">{label}</div>
+        <div className="mb-1 text-sm sm:text-xs text-ios-label2">{label}</div>
         <select
           value={current}
           onChange={(e) => void pick(e.target.value)}
-          className="w-full rounded-xl border border-transparent bg-ios-fill px-2 py-1.5 text-xs text-white outline-none transition-colors duration-200 ease-out focus:border-ios-blue"
+          className="w-full rounded-xl border border-transparent bg-ios-fill px-2 py-1.5 text-sm sm:text-xs text-white outline-none transition-colors duration-200 ease-out focus:border-ios-blue"
         >
           <option value="">— select camera —</option>
           {devices.map((d) => (
@@ -326,7 +338,7 @@ function CameraRow({ inputName, label, query }: { inputName: string; label: stri
             </option>
           ))}
         </select>
-        {rowError && <p className="mt-1 text-[10px] text-ios-red">{rowError}</p>}
+        {rowError && <p className="mt-1 text-xs text-ios-red">{rowError}</p>}
       </div>
     </div>
   )
@@ -335,11 +347,11 @@ function CameraRow({ inputName, label, query }: { inputName: string; label: stri
 function Step({ n, title, children }: { n: number; title: string; children: ReactNode }) {
   return (
     <div className="flex gap-3">
-      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ios-fill text-[10px] font-bold text-ios-label2">
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ios-fill text-xs font-bold text-ios-label2">
         {n}
       </span>
       <div className="min-w-0 flex-1 space-y-1.5">
-        <div className="text-sm font-medium text-white">{title}</div>
+        <div className="text-base sm:text-sm font-medium text-white">{title}</div>
         {children}
       </div>
     </div>

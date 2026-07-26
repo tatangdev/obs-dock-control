@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@fontsource-variable/plus-jakarta-sans";
 
 @theme {
   /* iOS dark mode system palette */
@@ -41,7 +42,8 @@
 body {
   @apply bg-black text-white antialiased;
   font-family:
-    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', ui-sans-serif, system-ui, sans-serif;
+    'Plus Jakarta Sans Variable', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', ui-sans-serif, system-ui,
+    sans-serif;
 }
 
 /* Every interactive element eases between states by default */

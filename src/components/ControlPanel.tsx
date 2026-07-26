@@ -3,6 +3,7 @@ import type { ObsState } from '../../shared/protocol'
 import { SOURCES, parseScene, sceneFor } from '../lib/scenes'
 import type { SourceKey, SplitKey } from '../lib/scenes'
 import MediaPanel from './MediaPanel'
+import type { MediaPrefs } from './MediaPanel'
 
 export type SendCommand = (request: string, params?: Record<string, unknown>) => void
 
@@ -64,6 +65,20 @@ interface SplitConfig {
   secondary: SourceKey
 }
 
+// The three source pairings a split can show. Order-insensitive — Swap
+// controls which member is featured. 3 pairs x 2 orientations x 4 styles
+// map exactly onto the 24 split scenes in the collection.
+const PAIRS = [
+  { key: '1-2', a: 'main', b: 'second', label: '1 + 2', title: 'Camera 1 + Camera 2', needsMedia: false },
+  { key: '1-m', a: 'main', b: 'media', label: '1 + M', title: 'Camera 1 + Media', needsMedia: true },
+  { key: '2-m', a: 'second', b: 'media', label: '2 + M', title: 'Camera 2 + Media', needsMedia: true },
+] as const satisfies readonly { key: string; a: SourceKey; b: SourceKey; label: string; title: string; needsMedia: boolean }[]
+
+type Pair = (typeof PAIRS)[number]
+
+const pairMatches = (pair: Pair, featured: SourceKey, secondary: SourceKey): boolean =>
+  (pair.a === featured && pair.b === secondary) || (pair.a === secondary && pair.b === featured)
+
 const isSource = (v: unknown): v is SourceKey => v === 'main' || v === 'second' || v === 'media'
 
 function loadLastSplit(): SplitConfig {
@@ -89,14 +104,14 @@ function loadLastSplit(): SplitConfig {
 interface ControlPanelProps {
   state: ObsState
   send: SendCommand
-  /** Dock-only: media auto-return preference, threaded to the media panel */
-  autoReturn?: { value: boolean; onChange: (value: boolean) => void }
+  /** Dock-only: media behavior preferences, threaded to the media panel */
+  mediaPrefs?: { value: MediaPrefs; onChange: (patch: Partial<MediaPrefs>) => void }
 }
 
 // Shared between dock and remote. OBS is the source of truth: the highlighted
 // mode/layout is *derived* from state.currentScene (mirrored to remotes by
 // the dock), and every interaction just switches the program scene.
-export default function ControlPanel({ state, send, autoReturn }: ControlPanelProps) {
+export default function ControlPanel({ state, send, mediaPrefs }: ControlPanelProps) {
   const selection = parseScene(state.currentScene)
   const [pickerOpen, setPickerOpen] = useState(false)
   // Remembered so mode switches have sensible targets
@@ -176,24 +191,27 @@ export default function ControlPanel({ state, send, autoReturn }: ControlPanelPr
     })
   }
 
-  // Dropdown in the popup: assigning a source already used by the other slot
-  // swaps them, so both slots always show different sources.
-  const assignSlot = (slot: 0 | 1, value: SourceKey): void => {
-    let { featured, secondary } = displaySplit
-    if (slot === 0) {
-      if (value === secondary) secondary = featured
-      featured = value
+  // Switch pairs while keeping the picture stable: whichever current source
+  // survives into the new pair keeps its slot, only the other slot changes.
+  // (Any two pairs share a member, so this rule always applies.)
+  const selectPair = (pair: Pair): void => {
+    const { style, featured, secondary } = displaySplit
+    let nextFeatured: SourceKey
+    let nextSecondary: SourceKey
+    if (featured === pair.a || featured === pair.b) {
+      nextFeatured = featured
+      nextSecondary = featured === pair.a ? pair.b : pair.a
     } else {
-      if (value === featured) featured = secondary
-      secondary = value
+      nextSecondary = secondary === pair.a || secondary === pair.b ? secondary : pair.b
+      nextFeatured = nextSecondary === pair.a ? pair.b : pair.a
     }
-    setSplit({ style: displaySplit.style, featured, secondary })
+    setSplit({ style, featured: nextFeatured, secondary: nextSecondary })
   }
 
   return (
     <div className="space-y-5">
       <section className="space-y-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-ios-label2">Layout</h3>
+        <h3 className="text-sm sm:text-xs font-semibold uppercase tracking-wider text-ios-label2">Layout</h3>
         <div className="grid grid-cols-3 gap-2">
           {MODES.map((m) => {
             const active = tileActive(m.key)
@@ -227,7 +245,7 @@ export default function ControlPanel({ state, send, autoReturn }: ControlPanelPr
                   )}
                 </div>
                 <div
-                  className={`mt-1.5 truncate text-center text-xs font-medium transition-colors duration-200 ease-out ${
+                  className={`mt-1.5 truncate text-center text-sm sm:text-xs font-medium transition-colors duration-200 ease-out ${
                     active ? 'text-ios-blue' : 'text-ios-label2'
                   }`}
                 >
@@ -240,14 +258,14 @@ export default function ControlPanel({ state, send, autoReturn }: ControlPanelPr
 
         {selection?.mode === 'fullscreen' && selection.source !== 'media' && (
           <div className="flex animate-fade-in items-center justify-center gap-3 pt-1">
-            <span className="text-xs text-ios-label3">Source</span>
+            <span className="text-sm sm:text-xs text-ios-label3">Source</span>
             <div className="flex overflow-hidden rounded-xl border border-transparent">
               {(['main', 'second'] as const).map((source) => (
                 <button
                   key={source}
                   title={`Show source ${source === 'main' ? 1 : 2} fullscreen`}
                   onClick={() => setScene(sceneFor({ mode: 'fullscreen', source }))}
-                  className={`px-4 py-1.5 text-xs font-bold transition-colors duration-200 ease-out ${
+                  className={`px-4 py-1.5 text-sm sm:text-xs font-bold transition-colors duration-200 ease-out ${
                     selection.source === source
                       ? 'bg-ios-blue text-white'
                       : 'bg-ios-fill text-ios-label2 hover:bg-ios-fill2'
@@ -262,29 +280,35 @@ export default function ControlPanel({ state, send, autoReturn }: ControlPanelPr
 
         {selection?.mode === 'split' && (
           <div className="animate-fade-in space-y-1.5 pt-1">
-            <div className="flex items-center justify-center gap-2">
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <PairSelector
+                featured={displaySplit.featured}
+                secondary={displaySplit.secondary}
+                mediaLoaded={mediaLoaded}
+                onSelect={selectPair}
+              />
               <button
                 onClick={swap}
-                className="flex items-center gap-1.5 rounded-xl bg-ios-fill px-3 py-1.5 text-xs font-semibold text-ios-blue transition-all duration-200 ease-out hover:bg-ios-fill2 active:scale-[0.98]"
+                className="flex items-center gap-1.5 rounded-xl bg-ios-fill px-3 py-1.5 text-sm sm:text-xs font-semibold text-ios-blue transition-all duration-200 ease-out hover:bg-ios-fill2 active:scale-[0.98]"
               >
                 <SwapIcon />
                 Swap
               </button>
               <button
                 onClick={() => setPickerOpen(true)}
-                className="flex items-center gap-1.5 rounded-xl bg-ios-fill px-3 py-1.5 text-xs font-semibold text-ios-blue transition-all duration-200 ease-out hover:bg-ios-fill2 active:scale-[0.98]"
+                className="flex items-center gap-1.5 rounded-xl bg-ios-fill px-3 py-1.5 text-sm sm:text-xs font-semibold text-ios-blue transition-all duration-200 ease-out hover:bg-ios-fill2 active:scale-[0.98]"
               >
                 <GridIcon />
                 Layout
               </button>
             </div>
-            <p className="text-center text-[10px] text-ios-label3">Tap a box in the preview to change its source.</p>
+            <p className="text-center text-xs text-ios-label3">Tap a box in the preview to change its source.</p>
           </div>
         )}
       </section>
 
       <section className="space-y-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-ios-label2">Output</h3>
+        <h3 className="text-sm sm:text-xs font-semibold uppercase tracking-wider text-ios-label2">Output</h3>
         <div className="grid grid-cols-2 gap-2">
           <ToggleButton
             active={state.streaming}
@@ -301,7 +325,7 @@ export default function ControlPanel({ state, send, autoReturn }: ControlPanelPr
         </div>
       </section>
 
-      {state.media && <MediaPanel media={state.media} send={send} autoReturn={autoReturn} />}
+      {state.media && <MediaPanel media={state.media} send={send} prefs={mediaPrefs} />}
 
       {pickerOpen && (
         <div
@@ -313,7 +337,7 @@ export default function ControlPanel({ state, send, autoReturn }: ControlPanelPr
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold">Split screen layout</h3>
+              <h3 className="text-base sm:text-sm font-semibold">Split screen layout</h3>
               <button
                 onClick={() => setPickerOpen(false)}
                 className="rounded-md px-1.5 text-ios-blue transition-colors hover:text-ios-blue-light"
@@ -341,7 +365,7 @@ export default function ControlPanel({ state, send, autoReturn }: ControlPanelPr
                       <RectsPreview rects={s.rects} sources={[displaySplit.featured, displaySplit.secondary]} />
                     </div>
                     <div
-                      className={`mt-1 text-center text-xs font-medium transition-colors duration-200 ease-out ${
+                      className={`mt-1 text-center text-sm sm:text-xs font-medium transition-colors duration-200 ease-out ${
                         active ? 'text-ios-blue' : 'text-ios-label2'
                       }`}
                     >
@@ -352,24 +376,18 @@ export default function ControlPanel({ state, send, autoReturn }: ControlPanelPr
               })}
             </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <SlotSelect
-                label="Featured slot"
-                value={displaySplit.featured}
-                mediaEnabled={mediaLoaded}
-                onChange={(v) => assignSlot(0, v)}
-              />
-              <SlotSelect
-                label="Second slot"
-                value={displaySplit.secondary}
-                mediaEnabled={mediaLoaded}
-                onChange={(v) => assignSlot(1, v)}
+            <div className="mt-3 flex justify-center">
+              <PairSelector
+                featured={displaySplit.featured}
+                secondary={displaySplit.secondary}
+                mediaLoaded={mediaLoaded}
+                onSelect={selectPair}
               />
             </div>
 
             <button
               onClick={swap}
-              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-ios-fill px-3 py-2 text-xs font-semibold text-ios-blue transition-all duration-200 ease-out hover:bg-ios-fill2 active:scale-[0.98]"
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-ios-fill px-3 py-2 text-sm sm:text-xs font-semibold text-ios-blue transition-all duration-200 ease-out hover:bg-ios-fill2 active:scale-[0.98]"
             >
               <SwapIcon />
               Swap slots
@@ -381,42 +399,38 @@ export default function ControlPanel({ state, send, autoReturn }: ControlPanelPr
   )
 }
 
-const SOURCE_LABEL: Record<SourceKey, string> = {
-  main: 'Source 1 (Main)',
-  second: 'Source 2 (Second)',
-  media: 'Media (SDE video)',
-}
-
-function SlotSelect({
-  label,
-  value,
-  mediaEnabled,
-  onChange,
+// Segmented control for choosing which two sources share the split
+function PairSelector({
+  featured,
+  secondary,
+  mediaLoaded,
+  onSelect,
 }: {
-  label: string
-  value: SourceKey
-  mediaEnabled: boolean
-  onChange: (value: SourceKey) => void
+  featured: SourceKey
+  secondary: SourceKey
+  mediaLoaded: boolean
+  onSelect: (pair: Pair) => void
 }) {
   return (
-    <label className="block">
-      <span className="mb-1 block text-xs text-ios-label2">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => {
-          const v = e.target.value
-          if (isSource(v)) onChange(v)
-        }}
-        className="w-full rounded-xl border border-transparent bg-ios-fill px-2 py-1.5 text-xs text-white outline-none transition-colors duration-200 ease-out focus:border-ios-blue"
-      >
-        {SOURCES.map((s) => (
-          <option key={s} value={s} disabled={s === 'media' && !mediaEnabled}>
-            {SOURCE_LABEL[s]}
-            {s === 'media' && !mediaEnabled ? ' — no video loaded' : ''}
-          </option>
-        ))}
-      </select>
-    </label>
+    <div className="flex overflow-hidden rounded-xl">
+      {PAIRS.map((pair) => {
+        const active = pairMatches(pair, featured, secondary)
+        const disabled = pair.needsMedia && !mediaLoaded
+        return (
+          <button
+            key={pair.key}
+            disabled={disabled}
+            title={disabled ? 'Load a video on Media 0 in OBS first' : pair.title}
+            onClick={() => onSelect(pair)}
+            className={`px-3 py-1.5 text-sm sm:text-xs font-bold transition-colors duration-200 ease-out disabled:opacity-40 ${
+              active ? 'bg-ios-blue text-white' : 'bg-ios-fill text-ios-label2 hover:bg-ios-fill2'
+            }`}
+          >
+            {pair.label}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
@@ -434,7 +448,7 @@ function SourceGlyph({ source }: { source: SourceKey }) {
       </svg>
     )
   }
-  return <span className="text-[10px] leading-none font-bold">{source === 'main' ? '1' : '2'}</span>
+  return <span className="text-xs leading-none font-bold">{source === 'main' ? '1' : '2'}</span>
 }
 
 function SwapIcon() {
@@ -516,7 +530,7 @@ function ToggleButton({ active, activeLabel, idleLabel, onClick }: ToggleButtonP
   return (
     <button
       onClick={onClick}
-      className={`rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all duration-200 ease-out active:scale-[0.98] ${
+      className={`rounded-xl border px-3 py-2.5 text-base sm:text-sm font-semibold transition-all duration-200 ease-out active:scale-[0.98] ${
         active
           ? 'border-transparent bg-ios-red text-white hover:bg-ios-red/85'
           : 'border-transparent bg-ios-fill text-ios-label2 hover:bg-ios-fill2'

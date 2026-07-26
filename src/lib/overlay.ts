@@ -61,7 +61,55 @@ export const OVERLAY_LAYERS: readonly OverlayLayerSpec[] = [
 export const LOGO_INPUT = 'Logo'
 export const RUNNING_TEXT_INPUT = 'Running Text'
 
+// The shared background: one image source in a nested BACKGROUND scene that
+// sits at the *bottom* of every program scene — swap the image once and every
+// layout follows. Without it, split layouts show black behind the tiles.
+export const BACKGROUND_SCENE = 'BACKGROUND'
+export const BACKGROUND_INPUT = 'Background'
+
 type Query = <T = unknown>(request: string, params?: Record<string, unknown>) => Promise<T>
+
+// Create the BACKGROUND scene in a live OBS and slot it beneath every given
+// program scene. Reuses the Background input if it already exists.
+export async function createBackgroundSetup(query: Query, programScenes: readonly string[]): Promise<void> {
+  await query('CreateScene', { sceneName: BACKGROUND_SCENE })
+  let sceneItemId: number
+  try {
+    ;({ sceneItemId } = await query<{ sceneItemId: number }>('CreateInput', {
+      sceneName: BACKGROUND_SCENE,
+      inputName: BACKGROUND_INPUT,
+      inputKind: 'image_source',
+      inputSettings: {},
+      sceneItemEnabled: true,
+    }))
+  } catch {
+    ;({ sceneItemId } = await query<{ sceneItemId: number }>('CreateSceneItem', {
+      sceneName: BACKGROUND_SCENE,
+      sourceName: BACKGROUND_INPUT,
+      sceneItemEnabled: true,
+    }))
+  }
+  await query('SetSceneItemTransform', {
+    sceneName: BACKGROUND_SCENE,
+    sceneItemId,
+    sceneItemTransform: {
+      positionX: 0,
+      positionY: 0,
+      boundsType: 'OBS_BOUNDS_SCALE_INNER',
+      boundsAlignment: 0,
+      boundsWidth: 1920,
+      boundsHeight: 1080,
+    },
+  })
+  for (const sceneName of programScenes) {
+    const { sceneItemId: nestedId } = await query<{ sceneItemId: number }>('CreateSceneItem', {
+      sceneName,
+      sourceName: BACKGROUND_SCENE,
+      sceneItemEnabled: true,
+    })
+    await query('SetSceneItemIndex', { sceneName, sceneItemId: nestedId, sceneItemIndex: 0 })
+  }
+}
 
 // Create the given layers in a live OBS: input + transform + filters, hidden,
 // pushed to the bottom of the overlay stack. Creating in reverse keeps the

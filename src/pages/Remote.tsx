@@ -112,13 +112,13 @@ export default function Remote() {
   if (phase === 'ended') {
     return (
       <Shell title="Session ended">
-        <p className="mb-4 text-sm text-ios-label2">The session was closed or expired.</p>
+        <p className="mb-4 text-base sm:text-sm text-ios-label2">The session was closed or expired.</p>
         <button
           onClick={() => {
             setState(null)
             setPhase('form')
           }}
-          className="w-full rounded-xl bg-ios-blue active:scale-[0.98] transition-all duration-200 ease-out px-3 py-2.5 text-sm font-semibold text-white hover:bg-ios-blue-light"
+          className="w-full rounded-xl bg-ios-blue active:scale-[0.98] transition-all duration-200 ease-out px-3 py-2.5 text-base sm:text-sm font-semibold text-white hover:bg-ios-blue-light"
         >
           Join again
         </button>
@@ -131,17 +131,17 @@ export default function Remote() {
       <Shell title="Join a session" subtitle="The code and PIN are shown in the dock on the streaming PC.">
         <form onSubmit={join} className="space-y-3">
           <label className="block">
-            <span className="mb-1 block text-xs text-ios-label2">Session code</span>
+            <span className="mb-1 block text-sm sm:text-xs text-ios-label2">Session code</span>
             <input
               value={code}
               onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
-              className={`${inputCls} font-mono text-lg tracking-widest`}
+              className={`${inputCls} font-mono text-xl sm:text-lg tracking-widest`}
               placeholder="ABC123"
               autoFocus
             />
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs text-ios-label2">PIN</span>
+            <span className="mb-1 block text-sm sm:text-xs text-ios-label2">PIN</span>
             <input
               value={pin}
               onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))}
@@ -150,10 +150,10 @@ export default function Remote() {
               placeholder="1234"
             />
           </label>
-          {error && <p className="text-sm text-ios-red">{error}</p>}
+          {error && <p className="text-base sm:text-sm text-ios-red">{error}</p>}
           <button
             disabled={code.length < 6 || pin.length < 4 || phase === 'joining'}
-            className="w-full rounded-xl bg-ios-blue active:scale-[0.98] transition-all duration-200 ease-out px-3 py-2.5 text-sm font-semibold text-white hover:bg-ios-blue-light disabled:opacity-50"
+            className="w-full rounded-xl bg-ios-blue active:scale-[0.98] transition-all duration-200 ease-out px-3 py-2.5 text-base sm:text-sm font-semibold text-white hover:bg-ios-blue-light disabled:opacity-50"
           >
             {phase === 'joining' ? 'Joining…' : 'Join'}
           </button>
@@ -174,39 +174,45 @@ export default function Remote() {
   return (
     <div className="mx-auto max-w-3xl p-4">
       {notice && (
-        <div className="mb-3 animate-fade-in rounded-xl border border-transparent bg-ios-orange/15 px-3 py-2 text-sm text-ios-orange">
+        <div className="mb-3 animate-fade-in rounded-xl border border-transparent bg-ios-orange/15 px-3 py-2 text-base sm:text-sm text-ios-orange">
           {notice}
         </div>
       )}
       <div className="mb-4 flex items-center justify-between rounded-2xl border border-transparent bg-ios-card px-4 py-3">
         <div>
-          <div className="text-xs text-ios-label2">Connected to</div>
+          <div className="text-sm sm:text-xs text-ios-label2">Connected to</div>
           <div className="font-semibold">{sessionName}</div>
         </div>
         <div className="flex items-center gap-2">
           {state !== null && !isSetupReady(state.scenes) && (
-            <span className="animate-fade-in rounded-full bg-ios-orange/15 px-2.5 py-1 text-xs font-medium text-ios-orange">
+            <span className="animate-fade-in rounded-full bg-ios-orange/15 px-2.5 py-1 text-sm sm:text-xs font-medium text-ios-orange">
               OBS setup needed
             </span>
           )}
-          <span className="rounded-full bg-ios-fill px-2.5 py-1 text-xs font-medium text-ios-label2">Remote</span>
+          <span className="rounded-full bg-ios-fill px-2.5 py-1 text-sm sm:text-xs font-medium text-ios-label2">Remote</span>
         </div>
       </div>
       {state ? (
-        <div className={`flex items-start gap-4 ${blocked ? 'pointer-events-none opacity-50' : ''}`}>
+        <div
+          className={`flex flex-col gap-6 sm:flex-row sm:items-start sm:gap-4 ${
+            blocked ? 'pointer-events-none opacity-50' : ''
+          }`}
+        >
           <div className="min-w-0 flex-1">
             <ControlPanel state={state} send={send} />
           </div>
-          <LayerPanel
-            layers={state.layers}
-            runningText={state.runningText}
-            currentScene={state.currentScene}
-            scenes={state.scenes}
-            send={send}
-          />
+          <div className="w-full shrink-0 sm:w-52">
+            <LayerPanel
+              layers={state.layers}
+              runningText={state.runningText}
+              currentScene={state.currentScene}
+              scenes={state.scenes}
+              send={send}
+            />
+          </div>
         </div>
       ) : (
-        <p className="text-sm text-ios-label2">Waiting for the dock to send its first state…</p>
+        <p className="text-base sm:text-sm text-ios-label2">Waiting for the dock to send its first state…</p>
       )}
       {toast && <Toast message={toast.text} />}
     </div>
@@ -214,4 +220,4 @@ export default function Remote() {
 }
 
 const inputCls =
-  'w-full rounded-xl border border-transparent bg-ios-fill px-3 py-2 text-sm text-white outline-none focus:border-ios-blue'
+  'w-full rounded-xl border border-transparent bg-ios-fill px-3 py-2 text-base sm:text-sm text-white outline-none focus:border-ios-blue'

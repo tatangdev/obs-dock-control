@@ -1,46 +1,32 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 
-// Below this size the UI starts to shrink instead of cropping/scrolling.
-const REF_W = 420
-const REF_H = 460
+// Handheld cutoff: below this (smaller viewport side) the UI zooms up a bit
+// so touch targets land at native-app sizes.
+const PHONE_MAX = 500
+const PHONE_REF_W = 360
+const PHONE_MAX_SCALE = 1.3
 
-interface Dims {
-  w: number
-  h: number
-  scale: number
+function computeScale(): number {
+  const minSide = Math.min(window.innerWidth, window.innerHeight)
+  if (minSide >= PHONE_MAX) return 1
+  return Math.min(PHONE_MAX_SCALE, Math.max(1, minSide / PHONE_REF_W))
 }
 
-function compute(): Dims {
-  const vw = window.innerWidth
-  const vh = window.innerHeight
-  const w = Math.min(vw, (vh * 16) / 9)
-  const h = Math.min(vh, (vw * 9) / 16)
-  return { w, h, scale: Math.min(1, w / REF_W, h / REF_H) }
-}
-
-// Letterboxed 16:9 stage, like an OBS canvas: the app always renders inside
-// the largest 16:9 rectangle that fits the viewport. Whatever space is left
-// over stays empty — bars top/bottom on tall windows, left/right on wide ones.
-// On small canvases the content zooms down proportionally so it fits instead
-// of being cropped: layout size is w/scale × h/scale, rendered back at w × h.
+// Full-viewport app shell. The UI is responsive (the sidebar stacks below the
+// controls on narrow viewports); phones additionally get a mild zoom.
 export default function Stage({ children }: { children: ReactNode }) {
-  const [dims, setDims] = useState<Dims>(compute)
+  const [scale, setScale] = useState<number>(computeScale)
 
   useEffect(() => {
-    const onResize = (): void => setDims(compute())
+    const onResize = (): void => setScale(computeScale())
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
   return (
-    <div className="grid h-dvh w-screen place-items-center bg-black">
-      <div
-        className="overflow-y-auto bg-black ring-1 ring-ios-sep"
-        style={{ width: dims.w / dims.scale, height: dims.h / dims.scale, zoom: dims.scale }}
-      >
-        {children}
-      </div>
+    <div className="min-h-dvh w-full bg-black" style={scale > 1 ? { zoom: scale } : undefined}>
+      {children}
     </div>
   )
 }
