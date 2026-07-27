@@ -27,8 +27,8 @@ export default function Home() {
         >
           <div className="text-xl sm:text-lg font-semibold">Remote</div>
           <p className="mt-1 text-base sm:text-sm text-ios-label2">
-            Enter the session code and PIN to switch layouts and control the stream from a phone, tablet, or another
-            computer.
+            Control the stream from a phone, tablet, or another computer — scan the QR code on the dock to join
+            instantly, or enter the session code and PIN.
           </p>
         </Link>
       </div>

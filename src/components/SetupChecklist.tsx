@@ -1,8 +1,17 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { OBSEventTypes } from 'obs-websocket-js'
 import type { LayerInfo, MediaStatus } from '../../shared/protocol'
 import type { ObsQuery, ObsSubscribe } from '../lib/useObs'
-import { SCREENS, createScreenScenes, fixMediaScaling, isSetupReady, parseScene } from '../lib/scenes'
+import {
+  MEDIA_CLONES,
+  SCREENS,
+  createScreenScenes,
+  SPLIT_BOXES,
+  alignLayouts,
+  isSetupReady,
+  parseScene,
+  syncMediaClones,
+} from '../lib/scenes'
 import {
   BACKGROUND_INPUT,
   BACKGROUND_SCENE,
@@ -72,6 +81,20 @@ async function inputHasSetting(query: ObsQuery, inputName: string, keys: readonl
   }
 }
 
+// Await a bag of named probes in parallel. Replaces a positional
+// Promise.all destructure where adding one probe silently shifted the rest.
+async function probeAll<T extends Record<string, Promise<unknown>>>(
+  probes: T,
+): Promise<{ [K in keyof T]: Awaited<T[K]> }> {
+  const keys = Object.keys(probes) as (keyof T)[]
+  const values = await Promise.all(Object.values(probes))
+  const out = {} as { [K in keyof T]: Awaited<T[K]> }
+  keys.forEach((key, i) => {
+    out[key] = values[i] as (typeof out)[typeof key]
+  })
+  return out
+}
+
 interface SetupChecklistProps {
   query: ObsQuery
   subscribe: ObsSubscribe
@@ -80,6 +103,8 @@ interface SetupChecklistProps {
   layers: LayerInfo[]
   runningText: string | null
   onOpenSetup: () => void
+  /** Reports how many rows need attention (for badges elsewhere) */
+  onItemsChange?: (count: number) => void
 }
 
 // Dock-only "needs attention" card: each row is something not configured yet,
@@ -93,14 +118,31 @@ export default function SetupChecklist({
   layers,
   runningText,
   onOpenSetup,
+  onItemsChange,
 }: SetupChecklistProps) {
   const [items, setItems] = useState<Item[]>([])
   const [guide, setGuide] = useState<Item | null>(null)
   const [fixing, setFixing] = useState<string | null>(null)
   const [fixError, setFixError] = useState<string | null>(null)
+  // Distinguishes "no problems found" from "checks haven't run yet"
+  const [ran, setRan] = useState(false)
 
   const scenesReady = isSetupReady(scenes)
-  const mediaFileSet = media !== null && media.file !== null
+  // A media row is warranted when nothing can show in the media slots: no
+  // visible source in the MEDIA scene, or a video source without a file.
+  // (media === null means the scene itself is missing — the collection row
+  // covers that.)
+  const mediaProblem =
+    media === null
+      ? null
+      : media.active === null
+        ? media.sources.length === 0
+          ? 'The MEDIA scene has no media sources — Media mode stays locked.'
+          : 'No media source is visible — Media mode stays locked.'
+        : media.playable && media.file === null
+          ? 'No video file loaded — Media mode stays locked.'
+          : null
+  const mediaActive = media?.active ?? null
   const runningTextEmpty = runningText !== null && runningText.trim() === ''
   // Reconcile the live OVERLAY scene against the blueprint. An empty layer
   // list means the fetch itself failed, so don't diagnose from it.
@@ -116,7 +158,17 @@ export default function SetupChecklist({
   const screenLeftoversKey = screenLeftovers.map((l) => l.id).join(',')
   const backgroundMissing = !scenes.includes(BACKGROUND_SCENE)
 
+  // Checks fire from events and dep changes and overlap freely — only the
+  // newest run may publish, or a stale sweep resurrects already-fixed rows.
+  const checksSeq = useRef(0)
   const runChecks = useCallback(async () => {
+    const seq = ++checksSeq.current
+    const report = (list: Item[]): void => {
+      if (seq !== checksSeq.current) return
+      setItems(list)
+      setRan(true)
+      onItemsChange?.(list.length)
+    }
     const found: Item[] = []
 
     if (!scenesReady) {
@@ -134,49 +186,73 @@ export default function SetupChecklist({
           ],
         },
       })
-      setItems(found)
+      report(found)
       return // source checks are meaningless until the collection is in
     }
 
-    const [
-      mainCam,
-      secondCam,
-      logoSet,
-      backgroundSet,
-      audioExists,
-      audioDeviceSet,
-      camKind,
-      version,
-      mediaScaleOutdated,
-      ...screenResults
-    ] = await Promise.all([
-        inputHasSetting(query, 'Main Cam 0', DEVICE_KEYS),
-        inputHasSetting(query, 'Second Cam 0', DEVICE_KEYS),
-        inputHasSetting(query, LOGO_INPUT, ['file']),
-        inputHasSetting(query, BACKGROUND_INPUT, ['file']),
-        inputExists(query, AUDIO_INPUT),
-        inputHasSetting(query, AUDIO_INPUT, ['device_id']),
-        inputKindOf(query, 'Main Cam 0'),
-        query<{ platform: string }>('GetVersion').catch(() => null),
-        // media items must be a fit-inside box of exactly the canvas size —
-        // catches both old fixed-scale imports and mis-scaled bounds
-        query<{ sceneItems: { sourceName: string; sceneItemTransform: Record<string, unknown> }[] }>(
-          'GetSceneItemList',
-          { sceneName: 'MEDIA' },
-        )
+    const c = await probeAll({
+      mainCam: inputHasSetting(query, 'Main Cam 0', DEVICE_KEYS),
+      secondCam: inputHasSetting(query, 'Second Cam 0', DEVICE_KEYS),
+      logoSet: inputHasSetting(query, LOGO_INPUT, ['file']),
+      backgroundSet: inputHasSetting(query, BACKGROUND_INPUT, ['file']),
+      audioExists: inputExists(query, AUDIO_INPUT),
+      audioDeviceSet: inputHasSetting(query, AUDIO_INPUT, ['device_id']),
+      camKind: inputKindOf(query, 'Main Cam 0'),
+      version: query<{ platform: string }>('GetVersion').catch(() => null),
+      // Layouts must match the derived grid exactly. Two cheap probes catch
+      // every known off-spec install: media items must be fit-inside boxes of
+      // the full canvas (old fixed-scale imports, mis-scaled bounds), and cam
+      // slots must be cover boxes of the exact grid rect (hand-composited
+      // drift, pre-grid imports).
+      layoutOffGrid: Promise.all([
+        query<{
+          sceneItems: { sourceName: string; sceneItemTransform: Record<string, unknown> }[]
+        }>('GetSceneItemList', { sceneName: 'MEDIA' })
           .then((r) => {
-            const t = r.sceneItems.find((i) => i.sourceName === 'Media 0')?.sceneItemTransform
+            const candidates = r.sceneItems.filter(
+              (i) => i.sourceName !== OVERLAY_SCENE && i.sourceName !== BACKGROUND_SCENE,
+            )
+            const t = (candidates.find((i) => i.sourceName === 'Media 0') ?? candidates[0])?.sceneItemTransform
             if (!t) return null
             return t['boundsType'] !== 'OBS_BOUNDS_SCALE_INNER' || t['boundsWidth'] !== 1920
           })
           .catch(() => null),
-        ...SCREENS.map((s) => inputHasSetting(query, s.input, ['file'])),
-      ])
+        query<{
+          sceneItems: { sourceName: string; sceneItemTransform: Record<string, unknown> }[]
+        }>('GetSceneItemList', { sceneName: 'MAIN SECOND' })
+          .then((r) => {
+            const t = r.sceneItems.find((i) => i.sourceName === 'Main Cam 1')?.sceneItemTransform
+            if (!t) return null
+            const want = SPLIT_BOXES.equal[0]
+            return (
+              t['boundsType'] !== 'OBS_BOUNDS_SCALE_OUTER' ||
+              Math.abs(Number(t['boundsWidth']) - want.w) > 0.01 ||
+              Math.abs(Number(t['positionX']) - want.x) > 0.01
+            )
+          })
+          .catch(() => null),
+      ]).then((probes) => probes.some((p) => p === true)),
+      // Split slots render clones — each must point at the source the MEDIA
+      // scene shows, or fullscreen and PiP show different media (a partial
+      // selectMediaSource failure leaves exactly this drift behind).
+      mediaCloneDrift:
+        mediaActive === null
+          ? Promise.resolve(false)
+          : Promise.all(
+              MEDIA_CLONES.map((clone) =>
+                query<{ inputSettings: Record<string, unknown> }>('GetInputSettings', { inputName: clone })
+                  .then((r) => String(r.inputSettings['clone'] ?? ''))
+                  .catch(() => null),
+              ),
+            ).then((targets) => targets.some((t) => t !== null && t !== '' && t !== mediaActive)),
+      screens: Promise.all(SCREENS.map((s) => inputHasSetting(query, s.input, ['file']))),
+    })
+    if (seq !== checksSeq.current) return
 
     // A collection built for another OS has camera kinds this OBS can't run —
     // no device can ever be picked. Catch it before the confusing symptoms.
-    const platform = version ? platformFromObs(version.platform) : null
-    if (platform && camKind !== null && camKind !== CAMERA_KIND[platform]) {
+    const platform = c.version ? platformFromObs(c.version.platform) : null
+    if (platform && c.camKind !== null && c.camKind !== CAMERA_KIND[platform]) {
       found.push({
         key: 'wrong-platform',
         label: 'Collection is for another OS',
@@ -191,11 +267,11 @@ export default function SetupChecklist({
           ],
         },
       })
-      setItems(found)
+      report(found)
       return // device checks are meaningless on wrong-kind sources
     }
 
-    if (mainCam === false) {
+    if (c.mainCam === false) {
       found.push({
         key: 'main-cam',
         label: 'Camera 1 (Main)',
@@ -211,7 +287,7 @@ export default function SetupChecklist({
         },
       })
     }
-    if (secondCam === false) {
+    if (c.secondCam === false) {
       found.push({
         key: 'second-cam',
         label: 'Camera 2 (Second)',
@@ -228,24 +304,24 @@ export default function SetupChecklist({
       })
     }
 
-    if (!mediaFileSet) {
+    if (mediaProblem !== null) {
       found.push({
         key: 'media',
-        label: 'Media video',
-        problem: 'No video file loaded — Media mode stays locked.',
+        label: 'Media source',
+        problem: mediaProblem,
         guide: {
-          title: 'Load the media video',
+          title: 'Set up the media source',
           steps: [
             'In OBS, open the MEDIA scene.',
-            'Double-click the "Media 0" source.',
-            'Browse to the video file and press OK.',
-            'Playback controls appear in the Media panel here.',
+            'Double-click a media source (e.g. "Media 0") and browse to its video file.',
+            'More sources can be added to the scene — video, image, browser — anything.',
+            'With several sources in the scene, the Media panel here lists them: tap one to put it on the media slots everywhere.',
           ],
         },
       })
     }
 
-    if (logoSet === false) {
+    if (c.logoSet === false) {
       found.push({
         key: 'logo',
         label: 'Logo image',
@@ -332,7 +408,7 @@ export default function SetupChecklist({
           ],
         },
       })
-    } else if (backgroundSet === false) {
+    } else if (c.backgroundSet === false) {
       found.push({
         key: 'background',
         label: 'Background image',
@@ -349,27 +425,47 @@ export default function SetupChecklist({
       })
     }
 
-    if (mediaScaleOutdated === true) {
+    if (c.mediaCloneDrift === true && mediaActive !== null) {
       found.push({
-        key: 'media-scale',
-        label: 'Media scaling fix available',
-        problem: 'Videos that are not 1080p render oversized or sliced in the media slots.',
+        key: 'media-clones',
+        label: 'Media slots out of sync',
+        problem: 'Split layouts would show a different media source than fullscreen.',
         fix: {
-          label: 'Fix media scaling',
-          run: () => fixMediaScaling(query, scenes),
+          label: 'Sync media slots',
+          run: () => syncMediaClones(query, mediaActive),
         },
         guide: {
-          title: 'Fix the media scaling',
+          title: 'Sync the media slots',
           steps: [
-            'Press "Fix media scaling" — every media slot switches to a fit-inside box, so any resolution or aspect ratio shows completely.',
-            'The two crop masks on the media clones widen to full frame (rounded corners stay).',
-            'Nothing else changes — cameras, images and layouts are untouched.',
+            'The split layouts show media through clone sources (Media 1–5).',
+            `They must point at the source the MEDIA scene shows ("${mediaActive}").`,
+            'Press "Sync media slots" to repoint them all — or pick the source again in the Media panel.',
           ],
         },
       })
     }
 
-    if (!backgroundMissing && !audioExists) {
+    if (c.layoutOffGrid === true) {
+      found.push({
+        key: 'layout-align',
+        label: 'Layout alignment fix available',
+        problem: 'Slot sizes and positions drift from the exact grid — layouts can be a pixel or two off.',
+        fix: {
+          label: 'Align layouts',
+          run: () => alignLayouts(query, scenes),
+        },
+        guide: {
+          title: 'Pixel-align the layouts',
+          steps: [
+            'Press "Align layouts" — every slot is re-placed on the exact layout grid (60px margins and gutters, exact aspect ratios).',
+            'Cameras fill their slots edge-to-edge; media fits inside, so any resolution shows completely.',
+            'Sources, images and audio are untouched — only sizes and positions change, at most by a few pixels.',
+          ],
+        },
+      })
+    }
+
+    if (!backgroundMissing && !c.audioExists) {
       found.push({
         key: 'audio-update',
         label: 'Audio input available',
@@ -390,7 +486,7 @@ export default function SetupChecklist({
           ],
         },
       })
-    } else if (audioExists && audioDeviceSet === false) {
+    } else if (c.audioExists && c.audioDeviceSet === false) {
       found.push({
         key: 'audio-device',
         label: 'Audio input device',
@@ -433,7 +529,7 @@ export default function SetupChecklist({
 
     SCREENS.forEach((spec, i) => {
       if (missingScreens.includes(spec)) return
-      if (screenResults[i] !== false) return
+      if (c.screens[i] !== false) return
       found.push({
         key: `screen-${spec.key}`,
         label: spec.input,
@@ -467,12 +563,14 @@ export default function SetupChecklist({
       })
     }
 
-    setItems(found)
+    report(found)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- missing lists are keyed by their joined strings
   }, [
     query,
+    onItemsChange,
     scenesReady,
-    mediaFileSet,
+    mediaProblem,
+    mediaActive,
     runningTextEmpty,
     missingLayersKey,
     missingScreensKey,
@@ -480,13 +578,35 @@ export default function SetupChecklist({
     backgroundMissing,
   ])
 
-  useEffect(() => {
-    void runChecks()
+  // OBS fires event bursts (imports, one-click fixes touch many items) —
+  // coalesce into one sweep instead of a full query volley per event.
+  const checksTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const scheduleChecks = useCallback(() => {
+    clearTimeout(checksTimer.current)
+    checksTimer.current = setTimeout(() => void runChecks(), 200)
   }, [runChecks])
 
-  useEffect(() => subscribe(WATCH_EVENTS, () => void runChecks()), [subscribe, runChecks])
+  useEffect(() => {
+    scheduleChecks()
+    return () => clearTimeout(checksTimer.current)
+  }, [scheduleChecks])
 
-  if (items.length === 0) return null
+  useEffect(() => subscribe(WATCH_EVENTS, scheduleChecks), [subscribe, scheduleChecks])
+
+  if (items.length === 0) {
+    // Show a positive state once checks have actually run, so "all good" is
+    // distinguishable from "checks never happened" for a first-time operator.
+    if (!ran) return null
+    return (
+      <section className="animate-fade-in space-y-2">
+        <h3 className="text-sm sm:text-xs font-semibold uppercase tracking-wider text-ios-label2">Setup status</h3>
+        <div className="flex items-center gap-2 rounded-2xl bg-ios-card px-3 py-2.5 text-sm sm:text-xs text-ios-green">
+          <span className="h-2 w-2 shrink-0 rounded-full bg-ios-green" />
+          Everything is set — all checks passed.
+        </div>
+      </section>
+    )
+  }
 
   return (
     <section className="animate-fade-in space-y-2">

@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import OBSWebSocket, { EventSubscription } from 'obs-websocket-js'
 import type { OBSEventTypes } from 'obs-websocket-js'
-import type { AudioTrack, LayerInfo, MediaPlayState, MediaStatus, ObsState } from '../../shared/protocol'
-import { MEDIA_INPUT } from './scenes'
-import { AUDIO_INPUT, OVERLAY_SCENE, RUNNING_TEXT_INPUT } from './overlay'
+import type {
+  AudioTrack,
+  LayerInfo,
+  MediaPlayState,
+  MediaSourceInfo,
+  MediaStatus,
+  ObsState,
+} from '../../shared/protocol'
+import { MEDIA_SCENE, PLAYABLE_KINDS } from './scenes'
+import { AUDIO_INPUT, BACKGROUND_SCENE, OVERLAY_SCENE, RUNNING_TEXT_INPUT } from './overlay'
 
 export type ObsStatus = 'idle' | 'connecting' | 'connected' | 'error'
 
@@ -23,6 +30,29 @@ export interface CallError {
   message: string
   /** Monotonic id so identical back-to-back errors still retrigger effects */
   id: number
+}
+
+// obs-websocket-js has no request timeout: if OBS wedges, a call's promise
+// hangs forever and the state mirror silently freezes. Bound every request.
+const OBS_CALL_TIMEOUT_MS = 10_000
+
+function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${OBS_CALL_TIMEOUT_MS / 1000}s`)),
+      OBS_CALL_TIMEOUT_MS,
+    )
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (e: unknown) => {
+        clearTimeout(timer)
+        reject(e instanceof Error ? e : new Error(String(e)))
+      },
+    )
+  })
 }
 
 // Any of these events invalidates our snapshot, so we just rebuild it.
@@ -57,21 +87,53 @@ const MEDIA_STATE_MAP: Record<string, MediaPlayState> = {
 }
 
 async function mediaSnapshot(obs: OBSWebSocket): Promise<MediaStatus | null> {
+  let items: Record<string, unknown>[]
+  try {
+    ;({ sceneItems: items } = await obs.call('GetSceneItemList', { sceneName: MEDIA_SCENE }))
+  } catch {
+    // no MEDIA scene — setup incomplete
+    return null
+  }
+  // Every item except the nested overlay/background scenes is a media
+  // candidate the operator can put on the media slots.
+  const sources: MediaSourceInfo[] = items
+    .filter((i) => i.sourceName !== OVERLAY_SCENE && i.sourceName !== BACKGROUND_SCENE)
+    .map((i) => ({
+      id: Number(i.sceneItemId),
+      name: String(i.sourceName),
+      kind: typeof i.inputKind === 'string' && i.inputKind ? i.inputKind : 'scene',
+      visible: Boolean(i.sceneItemEnabled),
+    }))
+    .reverse() // OBS lists bottom-to-top; top-most (what renders on top) first
+
+  const active = sources.find((s) => s.visible) ?? null
+  const playable = active !== null && PLAYABLE_KINDS.has(active.kind)
+  const base: MediaStatus = {
+    sources,
+    active: active?.name ?? null,
+    playable,
+    file: null,
+    state: 'none',
+    cursorMs: 0,
+    durationMs: 0,
+  }
+  if (!playable || !active) return base
+
   try {
     const [status, settings] = await Promise.all([
-      obs.call('GetMediaInputStatus', { inputName: MEDIA_INPUT }),
-      obs.call('GetInputSettings', { inputName: MEDIA_INPUT }),
+      obs.call('GetMediaInputStatus', { inputName: active.name }),
+      obs.call('GetInputSettings', { inputName: active.name }),
     ])
     const file = settings.inputSettings['local_file']
     return {
+      ...base,
       file: typeof file === 'string' && file ? file : null,
       state: MEDIA_STATE_MAP[String(status.mediaState)] ?? 'none',
       cursorMs: typeof status.mediaCursor === 'number' ? status.mediaCursor : 0,
       durationMs: typeof status.mediaDuration === 'number' ? status.mediaDuration : 0,
     }
   } catch {
-    // the media input doesn't exist yet — setup incomplete
-    return null
+    return base
   }
 }
 
@@ -114,14 +176,15 @@ async function runningTextSnapshot(obs: OBSWebSocket): Promise<string | null> {
 }
 
 async function snapshot(obs: OBSWebSocket): Promise<ObsState> {
-  const [sceneList, media, layers, runningText, audioIn, mediaAudio] = await Promise.all([
+  const [sceneList, media, layers, runningText, audioIn] = await Promise.all([
     obs.call('GetSceneList'),
     mediaSnapshot(obs),
     layersSnapshot(obs),
     runningTextSnapshot(obs),
     audioTrackSnapshot(obs, AUDIO_INPUT),
-    audioTrackSnapshot(obs, MEDIA_INPUT),
   ])
+  // The media fader follows whichever source is active in the MEDIA scene
+  const mediaAudio = media?.active && media.playable ? await audioTrackSnapshot(obs, media.active) : null
 
   return {
     audio: { input: audioIn, media: mediaAudio },
@@ -145,9 +208,15 @@ export function useObs() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const callErrorId = useRef(0)
 
+  // Snapshots overlap (events fire while one is in flight) and can resolve
+  // out of order — a stale result must never overwrite a newer one, or the
+  // wrong state mirrors out to every remote.
+  const refreshSeq = useRef(0)
   const refresh = useCallback(async () => {
+    const seq = ++refreshSeq.current
     try {
-      setState(await snapshot(obs))
+      const snap = await withTimeout(snapshot(obs), 'OBS snapshot')
+      if (seq === refreshSeq.current) setState(snap)
     } catch {
       // not connected or mid-shutdown; a later event will retrigger
     }
@@ -183,8 +252,7 @@ export function useObs() {
 
   const call = useCallback<ObsCall>(
     (request, params) =>
-      obs
-        .call(request as never, params as never)
+      withTimeout(obs.call(request as never, params as never), request)
         .then(() => scheduleRefresh())
         .catch((e: unknown) => {
           const raw = e instanceof Error ? e.message.trim() : ''
@@ -198,17 +266,22 @@ export function useObs() {
   const clearCallError = useCallback(() => setCallError(null), [])
 
   const query = useCallback<ObsQuery>(
-    (request, params) => obs.call(request as never, params as never) as Promise<never>,
+    (request, params) => withTimeout(obs.call(request as never, params as never), request) as Promise<never>,
     [obs],
   )
 
   // Volume meters are a high-volume event stream, off by default — opt in
-  // while a watcher is mounted (the Setup audio row), back out afterwards.
+  // while at least one watcher is mounted (the Audio fader meter, the Setup
+  // audio row), back out when the last one stops. Reference-counted: one
+  // watcher unmounting must not kill the stream for the others.
+  const meterWatchers = useRef(0)
   const watchMeters = useCallback<ObsWatchMeters>(
     (inputName, handler) => {
-      void obs
-        .reidentify({ eventSubscriptions: EventSubscription.All | EventSubscription.InputVolumeMeters })
-        .catch(() => {})
+      if (++meterWatchers.current === 1) {
+        void obs
+          .reidentify({ eventSubscriptions: EventSubscription.All | EventSubscription.InputVolumeMeters })
+          .catch(() => {})
+      }
       const onMeters = (data: { inputs: { inputName?: unknown; inputLevelsMul?: unknown }[] }): void => {
         const entry = data.inputs.find((i) => i.inputName === inputName)
         if (!entry || !Array.isArray(entry.inputLevelsMul)) return
@@ -221,7 +294,9 @@ export function useObs() {
       obs.on('InputVolumeMeters' as never, onMeters as never)
       return () => {
         obs.off('InputVolumeMeters' as never, onMeters as never)
-        void obs.reidentify({ eventSubscriptions: EventSubscription.All }).catch(() => {})
+        if (--meterWatchers.current === 0) {
+          void obs.reidentify({ eventSubscriptions: EventSubscription.All }).catch(() => {})
+        }
       }
     },
     [obs],
@@ -238,13 +313,35 @@ export function useObs() {
   )
 
   // While the video plays, the cursor advances without any OBS event — poll
-  // once a second so progress mirrors to every screen.
+  // once a second so progress mirrors to every screen. Media-status only:
+  // a full snapshot every second for a 2-hour video is needless OBS load.
   const mediaPlaying = state?.media?.state === 'playing'
+  const activeMedia = state?.media?.active ?? null
   useEffect(() => {
-    if (!mediaPlaying) return
-    const timer = setInterval(() => void refresh(), 1000)
+    if (!mediaPlaying || !activeMedia) return
+    const timer = setInterval(() => {
+      obs
+        .call('GetMediaInputStatus', { inputName: activeMedia })
+        .then((status) => {
+          setState((prev) => {
+            if (!prev?.media) return prev
+            return {
+              ...prev,
+              media: {
+                ...prev.media,
+                state: MEDIA_STATE_MAP[String(status.mediaState)] ?? prev.media.state,
+                cursorMs: typeof status.mediaCursor === 'number' ? status.mediaCursor : prev.media.cursorMs,
+                durationMs: typeof status.mediaDuration === 'number' ? status.mediaDuration : prev.media.durationMs,
+              },
+            }
+          })
+        })
+        .catch(() => {
+          // input vanished mid-poll — the SceneItemRemoved event rebuilds
+        })
+    }, 1000)
     return () => clearInterval(timer)
-  }, [mediaPlaying, refresh])
+  }, [mediaPlaying, activeMedia, obs])
 
   useEffect(() => {
     const onEvent = (): void => scheduleRefresh()

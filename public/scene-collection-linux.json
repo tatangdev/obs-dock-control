@@ -267,7 +267,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -281,7 +281,7 @@
                             "y": 0
                         },
                         "pos_rel": {
-                            "x": -1.7777777910232544,
+                            "x": -1.7777777777777777,
                             "y": -1
                         },
                         "scale": {
@@ -293,12 +293,12 @@
                             "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1920,
+                            "y": 1080
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 3.5555555555555554,
+                            "y": 2
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -646,7 +646,7 @@
                         "mask_source_width": 1920,
                         "mask_source_height": 1080,
                         "rectangle_corner_radius": 46,
-                        "rectangle_width": 764,
+                        "rectangle_width": 764.5714285714288,
                         "rectangle_height": 1080,
                         "shape_center_x": 960,
                         "shape_center_y": 540,
@@ -881,8 +881,8 @@
                         "private_settings": {}
                     },
                     {
-                        "name": "Second Cam 1",
-                        "source_uuid": "73ba30d8-8a24-47df-b749-c226d2777f2a",
+                        "name": "Main Cam 1",
+                        "source_uuid": "82e5bf5b-f57f-4dd1-92a1-7f9cd836dc8d",
                         "visible": true,
                         "locked": false,
                         "rot": 0,
@@ -891,38 +891,38 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
                         "crop_top": 0,
                         "crop_right": 0,
                         "crop_bottom": 0,
-                        "id": 2,
+                        "id": 1,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 990,
-                            "y": 296
+                            "x": 60,
+                            "y": 295.3125
                         },
                         "pos_rel": {
-                            "x": 0.0555555559694767,
-                            "y": -0.45185184478759766
+                            "x": -1.6666666666666667,
+                            "y": -0.453125
                         },
                         "scale": {
-                            "x": 0.453125,
-                            "y": 0.45277777314186096
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.453125,
-                            "y": 0.45277777314186096
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 870,
+                            "y": 489.375
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1.6111111111111112,
+                            "y": 0.90625
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -936,8 +936,8 @@
                         "private_settings": {}
                     },
                     {
-                        "name": "Main Cam 1",
-                        "source_uuid": "82e5bf5b-f57f-4dd1-92a1-7f9cd836dc8d",
+                        "name": "Second Cam 1",
+                        "source_uuid": "73ba30d8-8a24-47df-b749-c226d2777f2a",
                         "visible": true,
                         "locked": false,
                         "rot": 0,
@@ -946,38 +946,38 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
                         "crop_top": 0,
                         "crop_right": 0,
                         "crop_bottom": 0,
-                        "id": 1,
+                        "id": 2,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 60,
-                            "y": 296
+                            "x": 990,
+                            "y": 295.3125
                         },
                         "pos_rel": {
-                            "x": -1.6666666269302368,
-                            "y": -0.45185184478759766
+                            "x": 0.05555555555555555,
+                            "y": -0.453125
                         },
                         "scale": {
-                            "x": 0.45260417461395264,
-                            "y": 0.45277777314186096
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.45260417461395264,
-                            "y": 0.45277777314186096
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 870,
+                            "y": 489.375
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1.6111111111111112,
+                            "y": 0.90625
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -1060,10 +1060,10 @@
             "push-to-talk-delay": 0,
             "hotkeys": {
                 "OBSBasic.SelectScene": [],
-                "libobs.show_scene_item.2": [],
-                "libobs.hide_scene_item.2": [],
                 "libobs.show_scene_item.1": [],
                 "libobs.hide_scene_item.1": [],
+                "libobs.show_scene_item.2": [],
+                "libobs.hide_scene_item.2": [],
                 "libobs.show_scene_item.3": [],
                 "libobs.hide_scene_item.3": [],
                 "libobs.show_scene_item.4": [],
@@ -1082,7 +1082,7 @@
             "id": "scene",
             "versioned_id": "scene",
             "settings": {
-                "id_counter": 6,
+                "id_counter": 4,
                 "custom_size": false,
                 "items": [
                     {
@@ -1103,7 +1103,7 @@
                         "crop_top": 0,
                         "crop_right": 0,
                         "crop_bottom": 0,
-                        "id": 5,
+                        "id": 3,
                         "group_item_backup": false,
                         "pos": {
                             "x": 0,
@@ -1120,61 +1120,6 @@
                         "scale_rel": {
                             "x": 1,
                             "y": 1
-                        },
-                        "bounds": {
-                            "x": 0,
-                            "y": 0
-                        },
-                        "bounds_rel": {
-                            "x": 0,
-                            "y": 0
-                        },
-                        "scale_filter": "disable",
-                        "blend_method": "default",
-                        "blend_type": "normal",
-                        "show_transition": {
-                            "duration": 300
-                        },
-                        "hide_transition": {
-                            "duration": 300
-                        },
-                        "private_settings": {}
-                    },
-                    {
-                        "name": "Second Cam 2",
-                        "source_uuid": "1a81c583-ebc8-4a74-bfc2-9dea4e44442d",
-                        "visible": true,
-                        "locked": false,
-                        "rot": 0,
-                        "scale_ref": {
-                            "x": 1920,
-                            "y": 1080
-                        },
-                        "align": 5,
-                        "bounds_type": 0,
-                        "bounds_align": 0,
-                        "bounds_crop": false,
-                        "crop_left": 0,
-                        "crop_top": 0,
-                        "crop_right": 0,
-                        "crop_bottom": 0,
-                        "id": 4,
-                        "group_item_backup": false,
-                        "pos": {
-                            "x": 988,
-                            "y": 190
-                        },
-                        "pos_rel": {
-                            "x": 0.051851850003004074,
-                            "y": -0.6481481790542603
-                        },
-                        "scale": {
-                            "x": 0.6473958492279053,
-                            "y": 0.6472222208976746
-                        },
-                        "scale_rel": {
-                            "x": 0.6473958492279053,
-                            "y": 0.6472222208976746
                         },
                         "bounds": {
                             "x": 0,
@@ -1206,38 +1151,93 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
                         "crop_top": 0,
                         "crop_right": 0,
                         "crop_bottom": 0,
-                        "id": 3,
+                        "id": 1,
                         "group_item_backup": false,
                         "pos": {
                             "x": 60,
                             "y": 190
                         },
                         "pos_rel": {
-                            "x": -1.6666666269302368,
-                            "y": -0.6481481790542603
+                            "x": -1.6666666666666667,
+                            "y": -0.6481481481481481
                         },
                         "scale": {
-                            "x": 0.6473958492279053,
-                            "y": 0.6472222208976746
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.6473958492279053,
-                            "y": 0.6472222208976746
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1244.4444444444443,
+                            "y": 700
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 2.304526748971193,
+                            "y": 1.2962962962962963
+                        },
+                        "scale_filter": "disable",
+                        "blend_method": "default",
+                        "blend_type": "normal",
+                        "show_transition": {
+                            "duration": 300
+                        },
+                        "hide_transition": {
+                            "duration": 300
+                        },
+                        "private_settings": {}
+                    },
+                    {
+                        "name": "Second Cam 2",
+                        "source_uuid": "1a81c583-ebc8-4a74-bfc2-9dea4e44442d",
+                        "visible": true,
+                        "locked": false,
+                        "rot": 0,
+                        "scale_ref": {
+                            "x": 1920,
+                            "y": 1080
+                        },
+                        "align": 5,
+                        "bounds_type": 3,
+                        "bounds_align": 0,
+                        "bounds_crop": false,
+                        "crop_left": 0,
+                        "crop_top": 0,
+                        "crop_right": 0,
+                        "crop_bottom": 0,
+                        "id": 2,
+                        "group_item_backup": false,
+                        "pos": {
+                            "x": 1364.4444444444443,
+                            "y": 190
+                        },
+                        "pos_rel": {
+                            "x": 0.7489711934156377,
+                            "y": -0.6481481481481481
+                        },
+                        "scale": {
+                            "x": 1,
+                            "y": 1
+                        },
+                        "scale_rel": {
+                            "x": 1,
+                            "y": 1
+                        },
+                        "bounds": {
+                            "x": 495.55555555555566,
+                            "y": 700
+                        },
+                        "bounds_rel": {
+                            "x": 0.917695473251029,
+                            "y": 1.2962962962962963
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -1268,7 +1268,7 @@
                         "crop_top": 0,
                         "crop_right": 0,
                         "crop_bottom": 0,
-                        "id": 6,
+                        "id": 4,
                         "group_item_backup": false,
                         "pos": {
                             "x": 0,
@@ -1320,14 +1320,14 @@
             "push-to-talk-delay": 0,
             "hotkeys": {
                 "OBSBasic.SelectScene": [],
-                "libobs.show_scene_item.4": [],
-                "libobs.hide_scene_item.4": [],
+                "libobs.show_scene_item.1": [],
+                "libobs.hide_scene_item.1": [],
+                "libobs.show_scene_item.2": [],
+                "libobs.hide_scene_item.2": [],
                 "libobs.show_scene_item.3": [],
                 "libobs.hide_scene_item.3": [],
-                "libobs.show_scene_item.5": [],
-                "libobs.hide_scene_item.5": [],
-                "libobs.show_scene_item.6": [],
-                "libobs.hide_scene_item.6": []
+                "libobs.show_scene_item.4": [],
+                "libobs.hide_scene_item.4": []
             },
             "deinterlace_mode": 0,
             "deinterlace_field_order": 0,
@@ -1411,7 +1411,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -1425,24 +1425,24 @@
                             "y": 60
                         },
                         "pos_rel": {
-                            "x": -1.6666666269302368,
-                            "y": -0.8888888955116272
+                            "x": -1.6666666666666667,
+                            "y": -0.8888888888888888
                         },
                         "scale": {
-                            "x": 0.78125,
-                            "y": 0.7814815044403076
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.78125,
-                            "y": 0.7814815044403076
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1500,
+                            "y": 843.75
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 2.7777777777777777,
+                            "y": 1.5625
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -1466,7 +1466,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -1476,28 +1476,28 @@
                         "id": 2,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 1264,
-                            "y": 581
+                            "x": 1453.75,
+                            "y": 581.25
                         },
                         "pos_rel": {
-                            "x": 0.5629629492759705,
-                            "y": 0.07592594623565674
+                            "x": 0.9143518518518519,
+                            "y": 0.0763888888888889
                         },
                         "scale": {
-                            "x": 0.40625,
-                            "y": 0.40648147463798523
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.40625,
-                            "y": 0.40648147463798523
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 406.25,
+                            "y": 438.75
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 0.7523148148148148,
+                            "y": 0.8125
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -1671,7 +1671,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -1685,7 +1685,7 @@
                             "y": 0
                         },
                         "pos_rel": {
-                            "x": -1.7777777910232544,
+                            "x": -1.7777777777777777,
                             "y": -1
                         },
                         "scale": {
@@ -1697,12 +1697,12 @@
                             "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1920,
+                            "y": 1080
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 3.5555555555555554,
+                            "y": 2
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -1726,7 +1726,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -1736,28 +1736,28 @@
                         "id": 2,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 1264,
-                            "y": 321
+                            "x": 1453.75,
+                            "y": 320.625
                         },
                         "pos_rel": {
-                            "x": 0.5629629492759705,
-                            "y": -0.4055555462837219
+                            "x": 0.9143518518518519,
+                            "y": -0.40625
                         },
                         "scale": {
-                            "x": 0.40625,
-                            "y": 0.40648147463798523
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.40625,
-                            "y": 0.40648147463798523
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 406.25,
+                            "y": 438.75
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 0.7523148148148148,
+                            "y": 0.8125
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -1931,7 +1931,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -1945,7 +1945,7 @@
                             "y": 0
                         },
                         "pos_rel": {
-                            "x": -1.7777777910232544,
+                            "x": -1.7777777777777777,
                             "y": -1
                         },
                         "scale": {
@@ -1957,12 +1957,12 @@
                             "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1920,
+                            "y": 1080
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 3.5555555555555554,
+                            "y": 2
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -2239,7 +2239,7 @@
                         "mask_source_width": 1920,
                         "mask_source_height": 1080,
                         "rectangle_corner_radius": 46,
-                        "rectangle_width": 764,
+                        "rectangle_width": 764.5714285714288,
                         "rectangle_height": 1080,
                         "shape_center_x": 960,
                         "shape_center_y": 540,
@@ -2555,38 +2555,38 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
                         "crop_top": 0,
                         "crop_right": 0,
                         "crop_bottom": 0,
-                        "id": 2,
+                        "id": 1,
                         "group_item_backup": false,
                         "pos": {
                             "x": 60,
-                            "y": 296
+                            "y": 295.3125
                         },
                         "pos_rel": {
-                            "x": -1.6666666269302368,
-                            "y": -0.45185184478759766
+                            "x": -1.6666666666666667,
+                            "y": -0.453125
                         },
                         "scale": {
-                            "x": 0.453125,
-                            "y": 0.45277777314186096
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.453125,
-                            "y": 0.45277777314186096
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 870,
+                            "y": 489.375
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1.6111111111111112,
+                            "y": 0.90625
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -2610,38 +2610,38 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
                         "crop_top": 0,
                         "crop_right": 0,
                         "crop_bottom": 0,
-                        "id": 1,
+                        "id": 2,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 991,
-                            "y": 296
+                            "x": 990,
+                            "y": 295.3125
                         },
                         "pos_rel": {
-                            "x": 0.05740740895271301,
-                            "y": -0.45185184478759766
+                            "x": 0.05555555555555555,
+                            "y": -0.453125
                         },
                         "scale": {
-                            "x": 0.45260417461395264,
-                            "y": 0.45277777314186096
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.45260417461395264,
-                            "y": 0.45277777314186096
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 870,
+                            "y": 489.375
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1.6111111111111112,
+                            "y": 0.90625
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -2724,10 +2724,10 @@
             "push-to-talk-delay": 0,
             "hotkeys": {
                 "OBSBasic.SelectScene": [],
-                "libobs.show_scene_item.2": [],
-                "libobs.hide_scene_item.2": [],
                 "libobs.show_scene_item.1": [],
                 "libobs.hide_scene_item.1": [],
+                "libobs.show_scene_item.2": [],
+                "libobs.hide_scene_item.2": [],
                 "libobs.show_scene_item.3": [],
                 "libobs.hide_scene_item.3": [],
                 "libobs.show_scene_item.4": [],
@@ -2746,7 +2746,7 @@
             "id": "scene",
             "versioned_id": "scene",
             "settings": {
-                "id_counter": 7,
+                "id_counter": 4,
                 "custom_size": false,
                 "items": [
                     {
@@ -2767,7 +2767,7 @@
                         "crop_top": 0,
                         "crop_right": 0,
                         "crop_bottom": 0,
-                        "id": 6,
+                        "id": 3,
                         "group_item_backup": false,
                         "pos": {
                             "x": 0,
@@ -2815,38 +2815,38 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
                         "crop_top": 0,
                         "crop_right": 0,
                         "crop_bottom": 0,
-                        "id": 5,
+                        "id": 1,
                         "group_item_backup": false,
                         "pos": {
                             "x": 60,
                             "y": 190
                         },
                         "pos_rel": {
-                            "x": -1.6666666269302368,
-                            "y": -0.6481481790542603
+                            "x": -1.6666666666666667,
+                            "y": -0.6481481481481481
                         },
                         "scale": {
-                            "x": 0.6473958492279053,
-                            "y": 0.6472222208976746
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.6473958492279053,
-                            "y": 0.6472222208976746
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1244.4444444444443,
+                            "y": 700
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 2.304526748971193,
+                            "y": 1.2962962962962963
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -2870,38 +2870,38 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
                         "crop_top": 0,
                         "crop_right": 0,
                         "crop_bottom": 0,
-                        "id": 4,
+                        "id": 2,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 988,
+                            "x": 1364.4444444444443,
                             "y": 190
                         },
                         "pos_rel": {
-                            "x": 0.051851850003004074,
-                            "y": -0.6481481790542603
+                            "x": 0.7489711934156377,
+                            "y": -0.6481481481481481
                         },
                         "scale": {
-                            "x": 0.6473958492279053,
-                            "y": 0.6472222208976746
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.6473958492279053,
-                            "y": 0.6472222208976746
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 495.55555555555566,
+                            "y": 700
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 0.917695473251029,
+                            "y": 1.2962962962962963
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -2932,7 +2932,7 @@
                         "crop_top": 0,
                         "crop_right": 0,
                         "crop_bottom": 0,
-                        "id": 7,
+                        "id": 4,
                         "group_item_backup": false,
                         "pos": {
                             "x": 0,
@@ -2984,14 +2984,14 @@
             "push-to-talk-delay": 0,
             "hotkeys": {
                 "OBSBasic.SelectScene": [],
-                "libobs.show_scene_item.5": [],
-                "libobs.hide_scene_item.5": [],
+                "libobs.show_scene_item.1": [],
+                "libobs.hide_scene_item.1": [],
+                "libobs.show_scene_item.2": [],
+                "libobs.hide_scene_item.2": [],
+                "libobs.show_scene_item.3": [],
+                "libobs.hide_scene_item.3": [],
                 "libobs.show_scene_item.4": [],
-                "libobs.hide_scene_item.4": [],
-                "libobs.show_scene_item.6": [],
-                "libobs.hide_scene_item.6": [],
-                "libobs.show_scene_item.7": [],
-                "libobs.hide_scene_item.7": []
+                "libobs.hide_scene_item.4": []
             },
             "deinterlace_mode": 0,
             "deinterlace_field_order": 0,
@@ -3075,38 +3075,38 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
                         "crop_top": 0,
                         "crop_right": 0,
                         "crop_bottom": 0,
-                        "id": 2,
+                        "id": 1,
                         "group_item_backup": false,
                         "pos": {
                             "x": 60,
                             "y": 60
                         },
                         "pos_rel": {
-                            "x": -1.6666666269302368,
-                            "y": -0.8888888955116272
+                            "x": -1.6666666666666667,
+                            "y": -0.8888888888888888
                         },
                         "scale": {
-                            "x": 0.78125,
-                            "y": 0.7814815044403076
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.78125,
-                            "y": 0.7814815044403076
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1500,
+                            "y": 843.75
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 2.7777777777777777,
+                            "y": 1.5625
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -3130,38 +3130,38 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
                         "crop_top": 0,
                         "crop_right": 0,
                         "crop_bottom": 0,
-                        "id": 1,
+                        "id": 2,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 1264,
-                            "y": 581
+                            "x": 1453.75,
+                            "y": 581.25
                         },
                         "pos_rel": {
-                            "x": 0.5629629492759705,
-                            "y": 0.07592594623565674
+                            "x": 0.9143518518518519,
+                            "y": 0.0763888888888889
                         },
                         "scale": {
-                            "x": 0.40625,
-                            "y": 0.40648147463798523
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.40625,
-                            "y": 0.40648147463798523
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 406.25,
+                            "y": 438.75
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 0.7523148148148148,
+                            "y": 0.8125
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -3244,10 +3244,10 @@
             "push-to-talk-delay": 0,
             "hotkeys": {
                 "OBSBasic.SelectScene": [],
-                "libobs.show_scene_item.2": [],
-                "libobs.hide_scene_item.2": [],
                 "libobs.show_scene_item.1": [],
                 "libobs.hide_scene_item.1": [],
+                "libobs.show_scene_item.2": [],
+                "libobs.hide_scene_item.2": [],
                 "libobs.show_scene_item.3": [],
                 "libobs.hide_scene_item.3": [],
                 "libobs.show_scene_item.4": [],
@@ -3335,7 +3335,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -3349,7 +3349,7 @@
                             "y": 0
                         },
                         "pos_rel": {
-                            "x": -1.7777777910232544,
+                            "x": -1.7777777777777777,
                             "y": -1
                         },
                         "scale": {
@@ -3361,12 +3361,12 @@
                             "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1920,
+                            "y": 1080
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 3.5555555555555554,
+                            "y": 2
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -3390,7 +3390,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -3400,28 +3400,28 @@
                         "id": 2,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 1264,
-                            "y": 371
+                            "x": 1453.75,
+                            "y": 320.625
                         },
                         "pos_rel": {
-                            "x": 0.5629629492759705,
-                            "y": -0.31296294927597046
+                            "x": 0.9143518518518519,
+                            "y": -0.40625
                         },
                         "scale": {
-                            "x": 0.40625,
-                            "y": 0.40648147463798523
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.40625,
-                            "y": 0.40648147463798523
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 406.25,
+                            "y": 438.75
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 0.7523148148148148,
+                            "y": 0.8125
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -4185,7 +4185,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -4196,27 +4196,27 @@
                         "group_item_backup": false,
                         "pos": {
                             "x": 60,
-                            "y": 296
+                            "y": 295.3125
                         },
                         "pos_rel": {
                             "x": -1.6666666666666667,
-                            "y": -0.45185185185185184
+                            "y": -0.453125
                         },
                         "scale": {
-                            "x": 0.45260417461395264,
-                            "y": 0.45277777314186096
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.45260417461395264,
-                            "y": 0.45277777314186096
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 870,
+                            "y": 489.375
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1.6111111111111112,
+                            "y": 0.90625
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -4251,11 +4251,11 @@
                         "group_item_backup": false,
                         "pos": {
                             "x": 990,
-                            "y": 296
+                            "y": 295.3125
                         },
                         "pos_rel": {
                             "x": 0.05555555555555555,
-                            "y": -0.45185185185185184
+                            "y": -0.453125
                         },
                         "scale": {
                             "x": 1,
@@ -4267,11 +4267,11 @@
                         },
                         "bounds": {
                             "x": 870,
-                            "y": 489
+                            "y": 489.375
                         },
                         "bounds_rel": {
                             "x": 1.6111111111111112,
-                            "y": 0.9055555555555556
+                            "y": 0.90625
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -4456,11 +4456,11 @@
                         "group_item_backup": false,
                         "pos": {
                             "x": 60,
-                            "y": 296
+                            "y": 295.3125
                         },
                         "pos_rel": {
                             "x": -1.6666666666666667,
-                            "y": -0.45185185185185184
+                            "y": -0.453125
                         },
                         "scale": {
                             "x": 1,
@@ -4471,12 +4471,12 @@
                             "y": 1
                         },
                         "bounds": {
-                            "x": 869,
-                            "y": 489
+                            "x": 870,
+                            "y": 489.375
                         },
                         "bounds_rel": {
-                            "x": 1.6092592592592592,
-                            "y": 0.9055555555555556
+                            "x": 1.6111111111111112,
+                            "y": 0.90625
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -4500,7 +4500,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -4511,27 +4511,27 @@
                         "group_item_backup": false,
                         "pos": {
                             "x": 990,
-                            "y": 296
+                            "y": 295.3125
                         },
                         "pos_rel": {
                             "x": 0.05555555555555555,
-                            "y": -0.45185185185185184
+                            "y": -0.453125
                         },
                         "scale": {
-                            "x": 0.453125,
-                            "y": 0.45277777314186096
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.453125,
-                            "y": 0.45277777314186096
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 870,
+                            "y": 489.375
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1.6111111111111112,
+                            "y": 0.90625
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -4705,7 +4705,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -4716,27 +4716,27 @@
                         "group_item_backup": false,
                         "pos": {
                             "x": 60,
-                            "y": 296
+                            "y": 295.3125
                         },
                         "pos_rel": {
                             "x": -1.6666666666666667,
-                            "y": -0.45185185185185184
+                            "y": -0.453125
                         },
                         "scale": {
-                            "x": 0.45260417461395264,
-                            "y": 0.45277777314186096
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.45260417461395264,
-                            "y": 0.45277777314186096
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 870,
+                            "y": 489.375
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1.6111111111111112,
+                            "y": 0.90625
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -4771,11 +4771,11 @@
                         "group_item_backup": false,
                         "pos": {
                             "x": 990,
-                            "y": 296
+                            "y": 295.3125
                         },
                         "pos_rel": {
                             "x": 0.05555555555555555,
-                            "y": -0.45185185185185184
+                            "y": -0.453125
                         },
                         "scale": {
                             "x": 1,
@@ -4787,11 +4787,11 @@
                         },
                         "bounds": {
                             "x": 870,
-                            "y": 489
+                            "y": 489.375
                         },
                         "bounds_rel": {
                             "x": 1.6111111111111112,
-                            "y": 0.9055555555555556
+                            "y": 0.90625
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -4976,11 +4976,11 @@
                         "group_item_backup": false,
                         "pos": {
                             "x": 60,
-                            "y": 296
+                            "y": 295.3125
                         },
                         "pos_rel": {
                             "x": -1.6666666666666667,
-                            "y": -0.45185185185185184
+                            "y": -0.453125
                         },
                         "scale": {
                             "x": 1,
@@ -4991,12 +4991,12 @@
                             "y": 1
                         },
                         "bounds": {
-                            "x": 869,
-                            "y": 489
+                            "x": 870,
+                            "y": 489.375
                         },
                         "bounds_rel": {
-                            "x": 1.6092592592592592,
-                            "y": 0.9055555555555556
+                            "x": 1.6111111111111112,
+                            "y": 0.90625
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -5020,7 +5020,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -5031,27 +5031,27 @@
                         "group_item_backup": false,
                         "pos": {
                             "x": 990,
-                            "y": 296
+                            "y": 295.3125
                         },
                         "pos_rel": {
                             "x": 0.05555555555555555,
-                            "y": -0.45185185185185184
+                            "y": -0.453125
                         },
                         "scale": {
-                            "x": 0.453125,
-                            "y": 0.45277777314186096
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.453125,
-                            "y": 0.45277777314186096
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 870,
+                            "y": 489.375
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1.6111111111111112,
+                            "y": 0.90625
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -5225,7 +5225,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -5243,20 +5243,20 @@
                             "y": -0.6481481481481481
                         },
                         "scale": {
-                            "x": 0.6473958492279053,
-                            "y": 0.6472222208976746
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.6473958492279053,
-                            "y": 0.6472222208976746
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1244.4444444444443,
+                            "y": 700
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 2.304526748971193,
+                            "y": 1.2962962962962963
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -5290,11 +5290,11 @@
                         "id": 2,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 1362,
+                            "x": 1364.4444444444443,
                             "y": 190
                         },
                         "pos_rel": {
-                            "x": 0.7444444444444445,
+                            "x": 0.7489711934156377,
                             "y": -0.6481481481481481
                         },
                         "scale": {
@@ -5306,12 +5306,12 @@
                             "y": 1
                         },
                         "bounds": {
-                            "x": 494,
-                            "y": 699
+                            "x": 495.55555555555566,
+                            "y": 700
                         },
                         "bounds_rel": {
-                            "x": 0.9148148148148149,
-                            "y": 1.2944444444444445
+                            "x": 0.917695473251029,
+                            "y": 1.2962962962962963
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -5511,12 +5511,12 @@
                             "y": 1
                         },
                         "bounds": {
-                            "x": 1243,
-                            "y": 699
+                            "x": 1244.4444444444443,
+                            "y": 700
                         },
                         "bounds_rel": {
-                            "x": 2.301851851851852,
-                            "y": 1.2944444444444445
+                            "x": 2.304526748971193,
+                            "y": 1.2962962962962963
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -5540,7 +5540,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -5550,28 +5550,28 @@
                         "id": 2,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 988,
+                            "x": 1364.4444444444443,
                             "y": 190
                         },
                         "pos_rel": {
-                            "x": 0.05185185185185185,
+                            "x": 0.7489711934156377,
                             "y": -0.6481481481481481
                         },
                         "scale": {
-                            "x": 0.6473958492279053,
-                            "y": 0.6472222208976746
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.6473958492279053,
-                            "y": 0.6472222208976746
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 495.55555555555566,
+                            "y": 700
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 0.917695473251029,
+                            "y": 1.2962962962962963
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -5745,7 +5745,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -5763,20 +5763,20 @@
                             "y": -0.6481481481481481
                         },
                         "scale": {
-                            "x": 0.6473958492279053,
-                            "y": 0.6472222208976746
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.6473958492279053,
-                            "y": 0.6472222208976746
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1244.4444444444443,
+                            "y": 700
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 2.304526748971193,
+                            "y": 1.2962962962962963
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -5810,11 +5810,11 @@
                         "id": 2,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 1362,
+                            "x": 1364.4444444444443,
                             "y": 190
                         },
                         "pos_rel": {
-                            "x": 0.7444444444444445,
+                            "x": 0.7489711934156377,
                             "y": -0.6481481481481481
                         },
                         "scale": {
@@ -5826,12 +5826,12 @@
                             "y": 1
                         },
                         "bounds": {
-                            "x": 494,
-                            "y": 699
+                            "x": 495.55555555555566,
+                            "y": 700
                         },
                         "bounds_rel": {
-                            "x": 0.9148148148148149,
-                            "y": 1.2944444444444445
+                            "x": 0.917695473251029,
+                            "y": 1.2962962962962963
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -6031,12 +6031,12 @@
                             "y": 1
                         },
                         "bounds": {
-                            "x": 1243,
-                            "y": 699
+                            "x": 1244.4444444444443,
+                            "y": 700
                         },
                         "bounds_rel": {
-                            "x": 2.301851851851852,
-                            "y": 1.2944444444444445
+                            "x": 2.304526748971193,
+                            "y": 1.2962962962962963
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -6060,7 +6060,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -6070,28 +6070,28 @@
                         "id": 2,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 988,
+                            "x": 1364.4444444444443,
                             "y": 190
                         },
                         "pos_rel": {
-                            "x": 0.05185185185185185,
+                            "x": 0.7489711934156377,
                             "y": -0.6481481481481481
                         },
                         "scale": {
-                            "x": 0.6473958492279053,
-                            "y": 0.6472222208976746
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.6473958492279053,
-                            "y": 0.6472222208976746
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 495.55555555555566,
+                            "y": 700
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 0.917695473251029,
+                            "y": 1.2962962962962963
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -6265,7 +6265,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -6283,20 +6283,20 @@
                             "y": -0.8888888888888888
                         },
                         "scale": {
-                            "x": 0.78125,
-                            "y": 0.7814815044403076
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.78125,
-                            "y": 0.7814815044403076
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1500,
+                            "y": 843.75
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 2.7777777777777777,
+                            "y": 1.5625
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -6330,12 +6330,12 @@
                         "id": 2,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 1451,
-                            "y": 581
+                            "x": 1453.75,
+                            "y": 581.25
                         },
                         "pos_rel": {
-                            "x": 0.9092592592592592,
-                            "y": 0.07592592592592592
+                            "x": 0.9143518518518519,
+                            "y": 0.0763888888888889
                         },
                         "scale": {
                             "x": 1,
@@ -6346,12 +6346,12 @@
                             "y": 1
                         },
                         "bounds": {
-                            "x": 406,
-                            "y": 439
+                            "x": 406.25,
+                            "y": 438.75
                         },
                         "bounds_rel": {
-                            "x": 0.7518518518518519,
-                            "y": 0.812962962962963
+                            "x": 0.7523148148148148,
+                            "y": 0.8125
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -6552,11 +6552,11 @@
                         },
                         "bounds": {
                             "x": 1500,
-                            "y": 844
+                            "y": 843.75
                         },
                         "bounds_rel": {
                             "x": 2.7777777777777777,
-                            "y": 1.5629629629629629
+                            "y": 1.5625
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -6580,7 +6580,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -6590,28 +6590,28 @@
                         "id": 2,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 1264,
-                            "y": 581
+                            "x": 1453.75,
+                            "y": 581.25
                         },
                         "pos_rel": {
-                            "x": 0.562962962962963,
-                            "y": 0.07592592592592592
+                            "x": 0.9143518518518519,
+                            "y": 0.0763888888888889
                         },
                         "scale": {
-                            "x": 0.40625,
-                            "y": 0.40648147463798523
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.40625,
-                            "y": 0.40648147463798523
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 406.25,
+                            "y": 438.75
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 0.7523148148148148,
+                            "y": 0.8125
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -6785,7 +6785,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -6803,20 +6803,20 @@
                             "y": -0.8888888888888888
                         },
                         "scale": {
-                            "x": 0.78125,
-                            "y": 0.7814815044403076
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.78125,
-                            "y": 0.7814815044403076
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1500,
+                            "y": 843.75
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 2.7777777777777777,
+                            "y": 1.5625
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -6850,12 +6850,12 @@
                         "id": 2,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 1451,
-                            "y": 581
+                            "x": 1453.75,
+                            "y": 581.25
                         },
                         "pos_rel": {
-                            "x": 0.9092592592592592,
-                            "y": 0.07592592592592592
+                            "x": 0.9143518518518519,
+                            "y": 0.0763888888888889
                         },
                         "scale": {
                             "x": 1,
@@ -6866,12 +6866,12 @@
                             "y": 1
                         },
                         "bounds": {
-                            "x": 406,
-                            "y": 439
+                            "x": 406.25,
+                            "y": 438.75
                         },
                         "bounds_rel": {
-                            "x": 0.7518518518518519,
-                            "y": 0.812962962962963
+                            "x": 0.7523148148148148,
+                            "y": 0.8125
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -7072,11 +7072,11 @@
                         },
                         "bounds": {
                             "x": 1500,
-                            "y": 844
+                            "y": 843.75
                         },
                         "bounds_rel": {
                             "x": 2.7777777777777777,
-                            "y": 1.5629629629629629
+                            "y": 1.5625
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -7100,7 +7100,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -7110,28 +7110,28 @@
                         "id": 2,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 1264,
-                            "y": 581
+                            "x": 1453.75,
+                            "y": 581.25
                         },
                         "pos_rel": {
-                            "x": 0.562962962962963,
-                            "y": 0.07592592592592592
+                            "x": 0.9143518518518519,
+                            "y": 0.0763888888888889
                         },
                         "scale": {
-                            "x": 0.40625,
-                            "y": 0.40648147463798523
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.40625,
-                            "y": 0.40648147463798523
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 406.25,
+                            "y": 438.75
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 0.7523148148148148,
+                            "y": 0.8125
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -7305,7 +7305,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -7331,12 +7331,12 @@
                             "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1920,
+                            "y": 1080
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 3.5555555555555554,
+                            "y": 2
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -7370,12 +7370,12 @@
                         "id": 2,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 1451,
-                            "y": 321
+                            "x": 1453.75,
+                            "y": 320.625
                         },
                         "pos_rel": {
-                            "x": 0.9092592592592592,
-                            "y": -0.40555555555555556
+                            "x": 0.9143518518518519,
+                            "y": -0.40625
                         },
                         "scale": {
                             "x": 1,
@@ -7386,12 +7386,12 @@
                             "y": 1
                         },
                         "bounds": {
-                            "x": 406,
-                            "y": 439
+                            "x": 406.25,
+                            "y": 438.75
                         },
                         "bounds_rel": {
-                            "x": 0.7518518518518519,
-                            "y": 0.812962962962963
+                            "x": 0.7523148148148148,
+                            "y": 0.8125
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -7620,7 +7620,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -7630,28 +7630,28 @@
                         "id": 2,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 1264,
-                            "y": 321
+                            "x": 1453.75,
+                            "y": 320.625
                         },
                         "pos_rel": {
-                            "x": 0.562962962962963,
-                            "y": -0.40555555555555556
+                            "x": 0.9143518518518519,
+                            "y": -0.40625
                         },
                         "scale": {
-                            "x": 0.40625,
-                            "y": 0.40648147463798523
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.40625,
-                            "y": 0.40648147463798523
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 406.25,
+                            "y": 438.75
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 0.7523148148148148,
+                            "y": 0.8125
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -7825,7 +7825,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -7851,12 +7851,12 @@
                             "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 1920,
+                            "y": 1080
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 3.5555555555555554,
+                            "y": 2
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -7890,12 +7890,12 @@
                         "id": 2,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 1451,
-                            "y": 321
+                            "x": 1453.75,
+                            "y": 320.625
                         },
                         "pos_rel": {
-                            "x": 0.9092592592592592,
-                            "y": -0.40555555555555556
+                            "x": 0.9143518518518519,
+                            "y": -0.40625
                         },
                         "scale": {
                             "x": 1,
@@ -7906,12 +7906,12 @@
                             "y": 1
                         },
                         "bounds": {
-                            "x": 406,
-                            "y": 439
+                            "x": 406.25,
+                            "y": 438.75
                         },
                         "bounds_rel": {
-                            "x": 0.7518518518518519,
-                            "y": 0.812962962962963
+                            "x": 0.7523148148148148,
+                            "y": 0.8125
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",
@@ -8140,7 +8140,7 @@
                             "y": 1080
                         },
                         "align": 5,
-                        "bounds_type": 0,
+                        "bounds_type": 3,
                         "bounds_align": 0,
                         "bounds_crop": false,
                         "crop_left": 0,
@@ -8150,28 +8150,28 @@
                         "id": 2,
                         "group_item_backup": false,
                         "pos": {
-                            "x": 1264,
-                            "y": 321
+                            "x": 1453.75,
+                            "y": 320.625
                         },
                         "pos_rel": {
-                            "x": 0.562962962962963,
-                            "y": -0.40555555555555556
+                            "x": 0.9143518518518519,
+                            "y": -0.40625
                         },
                         "scale": {
-                            "x": 0.40625,
-                            "y": 0.40648147463798523
+                            "x": 1,
+                            "y": 1
                         },
                         "scale_rel": {
-                            "x": 0.40625,
-                            "y": 0.40648147463798523
+                            "x": 1,
+                            "y": 1
                         },
                         "bounds": {
-                            "x": 0,
-                            "y": 0
+                            "x": 406.25,
+                            "y": 438.75
                         },
                         "bounds_rel": {
-                            "x": 0,
-                            "y": 0
+                            "x": 0.7523148148148148,
+                            "y": 0.8125
                         },
                         "scale_filter": "disable",
                         "blend_method": "default",

@@ -2,7 +2,15 @@ import type { ReactNode } from 'react'
 
 // Centered single-card layout used by every pre-session screen (connect,
 // start, join, ended).
-export default function Shell({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
+export default function Shell({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string
+  subtitle?: string
+  children: ReactNode
+}) {
   return (
     <div className="flex min-h-full items-center justify-center p-4">
       <div className="w-full max-w-sm">

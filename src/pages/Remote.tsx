@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { connectRelay } from '../lib/relay'
 import type { RelayHandle } from '../lib/relay'
 import ControlPanel from '../components/ControlPanel'
@@ -8,11 +9,13 @@ import Shell from '../components/Shell'
 import Toast from '../components/Toast'
 import type { ObsState } from '../../shared/protocol'
 import { isSetupReady } from '../lib/scenes'
+import { storageGet, storageSet } from '../lib/storage'
+import { inputCls, primaryBtnCls } from '../components/ui'
 
 type Phase = 'form' | 'joining' | 'live' | 'ended'
 
 export default function Remote() {
-  const [code, setCode] = useState(() => localStorage.getItem('remote-code') ?? '')
+  const [code, setCode] = useState(() => storageGet('remote-code') ?? '')
   const [pin, setPin] = useState('')
   const [phase, setPhase] = useState<Phase>('form')
   const [error, setError] = useState<string | null>(null)
@@ -41,12 +44,11 @@ export default function Remote() {
     relayRef.current = null
   }
 
-  function join(e: FormEvent<HTMLFormElement>): void {
-    e.preventDefault()
-    credsRef.current = { code, pin }
+  const startJoin = useCallback((joinCode: string, joinPin: string): void => {
+    credsRef.current = { code: joinCode, pin: joinPin }
     setPhase('joining')
     setError(null)
-    teardown()
+    relayRef.current?.close()
     relayRef.current = connectRelay({
       onOpen: () => {
         // Fires on every (re)connect, so a dropped remote rejoins by itself
@@ -62,7 +64,7 @@ export default function Remote() {
             setObsConnected(msg.obsConnected)
             setRelayDown(false)
             setError(null)
-            localStorage.setItem('remote-code', credsRef.current?.code ?? '')
+            storageSet('remote-code', credsRef.current?.code ?? '')
             setPhase('live')
             break
           case 'state':
@@ -101,7 +103,31 @@ export default function Remote() {
         else if (phaseRef.current === 'joining') setError('Cannot reach the server — retrying…')
       },
     })
+  }, [])
+
+  function join(e: FormEvent<HTMLFormElement>): void {
+    e.preventDefault()
+    startJoin(code, pin)
   }
+
+  // A scanned QR link arrives as /remote?code=…&pin=… — join straight away and
+  // scrub the credentials from the address bar so they don't linger in history.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const autoJoinTried = useRef(false)
+  useEffect(() => {
+    if (autoJoinTried.current) return
+    autoJoinTried.current = true
+    const qCode = (searchParams.get('code') ?? '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '')
+      .slice(0, 6)
+    const qPin = (searchParams.get('pin') ?? '').replace(/\D/g, '').slice(0, 8)
+    if (!qCode) return
+    setCode(qCode)
+    setPin(qPin)
+    setSearchParams({}, { replace: true })
+    if (qCode.length === 6 && qPin.length >= 4) startJoin(qCode, qPin)
+  }, [searchParams, setSearchParams, startJoin])
 
   useEffect(() => () => relayRef.current?.close(), [])
 
@@ -118,7 +144,7 @@ export default function Remote() {
             setState(null)
             setPhase('form')
           }}
-          className="w-full rounded-xl bg-ios-blue active:scale-[0.98] transition-all duration-200 ease-out px-3 py-2.5 text-base sm:text-sm font-semibold text-white hover:bg-ios-blue-light"
+          className={primaryBtnCls}
         >
           Join again
         </button>
@@ -134,11 +160,19 @@ export default function Remote() {
             <span className="mb-1 block text-sm sm:text-xs text-ios-label2">Session code</span>
             <input
               value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+              onChange={(e) =>
+                setCode(
+                  e.target.value
+                    .toUpperCase()
+                    .replace(/[^A-Z0-9]/g, '')
+                    .slice(0, 6),
+                )
+              }
               className={`${inputCls} font-mono text-xl sm:text-lg tracking-widest`}
               placeholder="ABC123"
               autoFocus
             />
+            <p className="mt-1 text-sm sm:text-xs text-ios-label3">6 characters, shown big in the dock.</p>
           </label>
           <label className="block">
             <span className="mb-1 block text-sm sm:text-xs text-ios-label2">PIN</span>
@@ -149,15 +183,17 @@ export default function Remote() {
               className={inputCls}
               placeholder="1234"
             />
+            <p className="mt-1 text-sm sm:text-xs text-ios-label3">4–8 digits, set when the session was started.</p>
           </label>
           {error && <p className="text-base sm:text-sm text-ios-red">{error}</p>}
-          <button
-            disabled={code.length < 6 || pin.length < 4 || phase === 'joining'}
-            className="w-full rounded-xl bg-ios-blue active:scale-[0.98] transition-all duration-200 ease-out px-3 py-2.5 text-base sm:text-sm font-semibold text-white hover:bg-ios-blue-light disabled:opacity-50"
-          >
+          <button disabled={code.length < 6 || pin.length < 4 || phase === 'joining'} className={primaryBtnCls}>
             {phase === 'joining' ? 'Joining…' : 'Join'}
           </button>
         </form>
+        <p className="mt-4 text-center text-sm sm:text-xs text-ios-label3">
+          Faster: press <span className="text-ios-label2">Invite</span> on the dock and scan the QR code — it joins with
+          nothing to type.
+        </p>
       </Shell>
     )
   }
@@ -179,17 +215,34 @@ export default function Remote() {
         </div>
       )}
       <div className="mb-4 flex items-center justify-between rounded-2xl border border-transparent bg-ios-card px-4 py-3">
-        <div>
+        <div className="min-w-0">
           <div className="text-sm sm:text-xs text-ios-label2">Connected to</div>
-          <div className="font-semibold">{sessionName}</div>
+          <div className="flex items-center gap-2">
+            <span className="min-w-0 truncate font-semibold">{sessionName}</span>
+            <span className="shrink-0 rounded-md bg-ios-fill px-1.5 py-0.5 font-mono text-xs text-ios-label2">
+              {code}
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {state !== null && !isSetupReady(state.scenes) && (
             <span className="animate-fade-in rounded-full bg-ios-orange/15 px-2.5 py-1 text-sm sm:text-xs font-medium text-ios-orange">
               OBS setup needed
             </span>
           )}
-          <span className="rounded-full bg-ios-fill px-2.5 py-1 text-sm sm:text-xs font-medium text-ios-label2">Remote</span>
+          <span className="rounded-full bg-ios-fill px-2.5 py-1 text-sm sm:text-xs font-medium text-ios-label2">
+            Remote
+          </span>
+          <button
+            onClick={() => {
+              teardown()
+              setState(null)
+              setPhase('form')
+            }}
+            className="text-sm sm:text-xs text-ios-red hover:text-ios-red/80"
+          >
+            Leave
+          </button>
         </div>
       </div>
       {state ? (
@@ -218,6 +271,3 @@ export default function Remote() {
     </div>
   )
 }
-
-const inputCls =
-  'w-full rounded-xl border border-transparent bg-ios-fill px-3 py-2 text-base sm:text-sm text-white outline-none focus:border-ios-blue'

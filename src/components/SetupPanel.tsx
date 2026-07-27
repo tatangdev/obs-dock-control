@@ -6,6 +6,7 @@ import { COLLECTION_NAME, REQUIRED_SCENES, isSetupReady } from '../lib/scenes'
 import { AUDIO_INPUT } from '../lib/overlay'
 import { CAMERA_DEVICE_PROP, COLLECTION_FILE, PLATFORMS, PLATFORM_LABEL, platformFromObs } from '../lib/platform'
 import type { Platform } from '../lib/platform'
+import { LevelMeter } from './ui'
 
 const PLUGINS = [
   { name: 'Source Clone', url: 'https://obsproject.com/forum/resources/source-clone.1632/', key: 'sourceClone' },
@@ -124,7 +125,11 @@ export default function SetupPanel({ query, subscribe, watchMeters, scenes, onCl
             >
               Refresh
             </button>
-            <button onClick={onClose} className="rounded-md px-1.5 text-ios-blue transition-colors hover:text-ios-blue-light">
+            <button
+              onClick={onClose}
+              aria-label="Close setup"
+              className="rounded-md px-1.5 text-ios-blue transition-colors hover:text-ios-blue-light"
+            >
               ✕
             </button>
           </div>
@@ -308,17 +313,18 @@ function CameraRow({ inputName, label, query }: { inputName: string; label: stri
   const load = useCallback(async () => {
     try {
       // The device property name depends on the capture kind (per OS)
-      const settings = await query<{ inputKind: string; inputSettings: Record<string, unknown> }>(
-        'GetInputSettings',
-        { inputName },
-      )
+      const settings = await query<{ inputKind: string; inputSettings: Record<string, unknown> }>('GetInputSettings', {
+        inputName,
+      })
       const propInfo = CAMERA_DEVICE_PROP[settings.inputKind] ?? { prop: 'device' }
       const props = await query<{ propertyItems: { itemName: string; itemValue: unknown; itemEnabled: boolean }[] }>(
         'GetInputPropertiesListPropertyItems',
         { inputName, propertyName: propInfo.prop },
       )
       setDeviceProp(propInfo)
-      setDevices(props.propertyItems.filter((p) => p.itemEnabled).map((p) => ({ name: p.itemName, value: String(p.itemValue) })))
+      setDevices(
+        props.propertyItems.filter((p) => p.itemEnabled).map((p) => ({ name: p.itemName, value: String(p.itemValue) })),
+      )
       setCurrent(String(settings.inputSettings[propInfo.prop] ?? ''))
       setRowError(null)
     } catch (e) {
@@ -449,9 +455,6 @@ function AudioInputRow({ query, watchMeters }: { query: ObsQuery; watchMeters: O
     }
   }
 
-  const pct = Math.max(0, Math.min(100, ((peakDb + 60) / 60) * 100))
-  const meterColor = peakDb > -6 ? 'bg-ios-red' : peakDb > -18 ? 'bg-ios-orange' : 'bg-ios-green'
-
   return (
     <div className="space-y-2 rounded-xl bg-ios-fill/60 p-2">
       <select
@@ -467,9 +470,7 @@ function AudioInputRow({ query, watchMeters }: { query: ObsQuery; watchMeters: O
         ))}
       </select>
       <div className="flex items-center gap-2">
-        <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-ios-fill">
-          <div className={`h-full rounded-full transition-[width] duration-75 ${meterColor}`} style={{ width: `${pct}%` }} />
-        </div>
+        <LevelMeter peakDb={peakDb} className="h-1.5 min-w-0 flex-1" />
         <span className="w-14 shrink-0 text-right text-sm sm:text-xs tabular-nums text-ios-label3">
           {peakDb <= -99 ? 'silent' : `${peakDb.toFixed(0)} dB`}
         </span>

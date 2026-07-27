@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AudioTrack, ObsState } from '../../shared/protocol'
-import { MEDIA_INPUT, SOURCES, parseScene, sceneFor } from '../lib/scenes'
-import type { SourceKey, SplitKey } from '../lib/scenes'
+import { CANVAS, SOURCES, SPLIT_BOXES, mediaRole, parseScene, sceneFor } from '../lib/scenes'
+import type { MediaBox, SendCommand, SourceKey, SplitKey } from '../lib/scenes'
+import type { ObsWatchMeters } from '../lib/useObs'
 import { AUDIO_INPUT } from '../lib/overlay'
+import { storageGet, storageSet } from '../lib/storage'
 import MediaPanel from './MediaPanel'
-import type { MediaPrefs } from './MediaPanel'
-
-export type SendCommand = (request: string, params?: Record<string, unknown>) => void
+import type { MediaPrefs } from '../lib/useMediaBehaviors'
+import { LevelMeter } from './ui'
 
 const MODES = [
   { key: 'fullscreen', label: 'Full Screen' },
@@ -16,8 +17,8 @@ const MODES = [
 
 type ModeKey = (typeof MODES)[number]['key']
 
-// Layout rects in % of the canvas, derived from the scene collection
-// (1920x1080, item pos/scale + Advanced Mask crops).
+// Layout rects in % of the canvas — derived from the exact same SPLIT_BOXES
+// the OBS scenes use, so the previews always mirror the real geometry.
 interface Rect {
   l: number
   t: number
@@ -25,40 +26,25 @@ interface Rect {
   h: number
 }
 
-const SPLIT_STYLES = [
-  {
-    key: 'equal',
-    label: 'Equal Split',
-    rects: [
-      { l: 3.1, t: 27.4, w: 45.3, h: 45.3 },
-      { l: 51.6, t: 27.4, w: 45.3, h: 45.3 },
-    ],
-  },
-  {
-    key: 'large',
-    label: 'Large Split',
-    rects: [
-      { l: 3.1, t: 17.6, w: 64.7, h: 64.7 },
-      { l: 70.9, t: 17.6, w: 25.8, h: 64.7 },
-    ],
-  },
-  {
-    key: 'big-small',
-    label: 'Big + Small',
-    rects: [
-      { l: 3.1, t: 5.6, w: 78.1, h: 78.1 },
-      { l: 75.6, t: 53.8, w: 21.2, h: 40.6 },
-    ],
-  },
-  {
-    key: 'overlay',
-    label: 'Overlay',
-    rects: [
-      { l: 0, t: 0, w: 100, h: 100 },
-      { l: 75.6, t: 29.7, w: 21.2, h: 40.6 },
-    ],
-  },
-] as const satisfies readonly { key: SplitKey; label: string; rects: readonly Rect[] }[]
+const pctRect = (b: MediaBox): Rect => ({
+  l: (b.x / CANVAS.w) * 100,
+  t: (b.y / CANVAS.h) * 100,
+  w: (b.w / CANVAS.w) * 100,
+  h: (b.h / CANVAS.h) * 100,
+})
+
+const SPLIT_LABELS: Record<SplitKey, string> = {
+  equal: 'Equal Split',
+  large: 'Large Split',
+  'big-small': 'Big + Small',
+  overlay: 'Overlay',
+}
+
+const SPLIT_STYLES = (['equal', 'large', 'big-small', 'overlay'] as const).map((key) => ({
+  key,
+  label: SPLIT_LABELS[key],
+  rects: SPLIT_BOXES[key].map(pctRect) as [Rect, Rect],
+}))
 
 interface SplitConfig {
   style: SplitKey
@@ -73,7 +59,14 @@ const PAIRS = [
   { key: '1-2', a: 'main', b: 'second', label: '1 + 2', title: 'Camera 1 + Camera 2', needsMedia: false },
   { key: '1-m', a: 'main', b: 'media', label: '1 + M', title: 'Camera 1 + Media', needsMedia: true },
   { key: '2-m', a: 'second', b: 'media', label: '2 + M', title: 'Camera 2 + Media', needsMedia: true },
-] as const satisfies readonly { key: string; a: SourceKey; b: SourceKey; label: string; title: string; needsMedia: boolean }[]
+] as const satisfies readonly {
+  key: string
+  a: SourceKey
+  b: SourceKey
+  label: string
+  title: string
+  needsMedia: boolean
+}[]
 
 type Pair = (typeof PAIRS)[number]
 
@@ -84,7 +77,7 @@ const isSource = (v: unknown): v is SourceKey => v === 'main' || v === 'second' 
 
 function loadLastSplit(): SplitConfig {
   try {
-    const raw = localStorage.getItem('last-split')
+    const raw = storageGet('last-split')
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<SplitConfig>
       if (
@@ -107,34 +100,47 @@ interface ControlPanelProps {
   send: SendCommand
   /** Dock-only: media behavior preferences, threaded to the media panel */
   mediaPrefs?: { value: MediaPrefs; onChange: (patch: Partial<MediaPrefs>) => void }
+  /** Dock-only: live peak meter for the sound input (needs a direct OBS link) */
+  watchMeters?: ObsWatchMeters
 }
 
 // Shared between dock and remote. OBS is the source of truth: the highlighted
 // mode/layout is *derived* from state.currentScene (mirrored to remotes by
 // the dock), and every interaction just switches the program scene.
-export default function ControlPanel({ state, send, mediaPrefs }: ControlPanelProps) {
+export default function ControlPanel({ state, send, mediaPrefs, watchMeters }: ControlPanelProps) {
   const selection = parseScene(state.currentScene)
   const [pickerOpen, setPickerOpen] = useState(false)
   // Remembered so mode switches have sensible targets
   const [lastSplit, setLastSplit] = useState<SplitConfig>(loadLastSplit)
   const [lastCam, setLastCam] = useState<'main' | 'second'>('main')
+  // Touch has no hover tooltips — disabled controls explain themselves here
+  const [hint, setHint] = useState<string | null>(null)
+  const hintTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const showHint = (text: string): void => {
+    clearTimeout(hintTimer.current)
+    setHint(text)
+    hintTimer.current = setTimeout(() => setHint(null), 4000)
+  }
+  useEffect(() => () => clearTimeout(hintTimer.current), [])
 
   useEffect(() => {
     if (selection?.mode === 'split') {
       const cfg: SplitConfig = { style: selection.style, featured: selection.featured, secondary: selection.secondary }
       setLastSplit(cfg)
-      localStorage.setItem('last-split', JSON.stringify(cfg))
+      storageSet('last-split', JSON.stringify(cfg))
     } else if (selection?.mode === 'fullscreen' && selection.source !== 'media') {
       setLastCam(selection.source)
     }
   }, [state.currentScene]) // eslint-disable-line react-hooks/exhaustive-deps -- selection derives from currentScene
 
   const displaySplit: SplitConfig = selection?.mode === 'split' ? selection : lastSplit
-  const selectedStyle = SPLIT_STYLES.find((s) => s.key === displaySplit.style) ?? SPLIT_STYLES[3]
-  // Media is only offerable as a source once a video file is set — never let
-  // anyone put an empty media slot on the stream. (File presence, not
-  // duration: an inactive source reports no duration even for a good file.)
-  const mediaLoaded = state.media !== null && state.media.file !== null
+  const selectedStyle = SPLIT_STYLES.find((s) => s.key === displaySplit.style) ?? SPLIT_STYLES[3]!
+  // Media is only offerable once something can actually show in the slots:
+  // a visible source that, if it's a video, has a file loaded. (File
+  // presence, not duration: an inactive source reports no duration even for
+  // a good file.)
+  const mediaLoaded =
+    state.media !== null && state.media.active !== null && (!state.media.playable || state.media.file !== null)
   const availableSources = mediaLoaded ? SOURCES : SOURCES.filter((s) => s !== 'media')
 
   // Which cam to show when jumping to fullscreen: the one on screen, if any
@@ -149,6 +155,11 @@ export default function ControlPanel({ state, send, mediaPrefs }: ControlPanelPr
 
   const setScene = (sceneName: string): void => send('SetCurrentProgramScene', { sceneName })
   const setSplit = (cfg: SplitConfig): void => setScene(sceneFor({ mode: 'split', ...cfg }))
+
+  // Media is on the stream right now — playback actions are audience-visible
+  const mediaOnAir = mediaRole(selection) !== null
+
+  const mediaLockedHint = 'Media is locked — load a video (or pick a source) in the Media panel below first.'
 
   const tileActive = (key: ModeKey): boolean => {
     if (!selection) return false
@@ -211,8 +222,18 @@ export default function ControlPanel({ state, send, mediaPrefs }: ControlPanelPr
 
   return (
     <div className="space-y-5">
+      {selection === null && (
+        <div className="animate-fade-in rounded-xl border border-transparent bg-ios-orange/15 px-3 py-2 text-sm sm:text-xs text-ios-orange">
+          OBS is on “{state.currentScene}” — a scene this panel doesn&apos;t manage. Pick a layout below to take over.
+        </div>
+      )}
       <section className="space-y-2">
-        <h3 className="text-sm sm:text-xs font-semibold uppercase tracking-wider text-ios-label2">Layout</h3>
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className="text-sm sm:text-xs font-semibold uppercase tracking-wider text-ios-label2">Layout</h3>
+          <span className="min-w-0 truncate text-xs text-ios-label3" title="Scene currently on program in OBS">
+            On air: <span className="font-mono">{state.currentScene}</span>
+          </span>
+        </div>
         <div className="grid grid-cols-3 gap-2">
           {MODES.map((m) => {
             const active = tileActive(m.key)
@@ -220,8 +241,8 @@ export default function ControlPanel({ state, send, mediaPrefs }: ControlPanelPr
             return (
               <div
                 key={m.key}
-                onClick={disabled ? undefined : () => selectMode(m.key)}
-                title={disabled ? 'Load a video in the Media panel first' : undefined}
+                onClick={disabled ? () => showHint(mediaLockedHint) : () => selectMode(m.key)}
+                title={disabled ? mediaLockedHint : undefined}
                 className={`group transition-transform duration-150 ease-out ${
                   disabled ? 'cursor-default opacity-40' : 'cursor-pointer active:scale-[0.97]'
                 }`}
@@ -257,6 +278,8 @@ export default function ControlPanel({ state, send, mediaPrefs }: ControlPanelPr
           })}
         </div>
 
+        {hint && <p className="animate-fade-in text-center text-sm sm:text-xs text-ios-orange">{hint}</p>}
+
         {selection?.mode === 'fullscreen' && selection.source !== 'media' && (
           <div className="flex animate-fade-in items-center justify-center gap-3 pt-1">
             <span className="text-sm sm:text-xs text-ios-label3">Source</span>
@@ -287,6 +310,7 @@ export default function ControlPanel({ state, send, mediaPrefs }: ControlPanelPr
                 secondary={displaySplit.secondary}
                 mediaLoaded={mediaLoaded}
                 onSelect={selectPair}
+                onLockedTap={() => showHint(mediaLockedHint)}
               />
               <button
                 onClick={swap}
@@ -312,15 +336,23 @@ export default function ControlPanel({ state, send, mediaPrefs }: ControlPanelPr
         <section className="space-y-2">
           <h3 className="text-sm sm:text-xs font-semibold uppercase tracking-wider text-ios-label2">Audio</h3>
           <div className="space-y-2">
-            {state.audio.input && <AudioRow label="Audio Input" inputName={AUDIO_INPUT} track={state.audio.input} send={send} />}
-            {state.audio.media && (
-              <AudioRow label="Media" inputName={MEDIA_INPUT} track={state.audio.media} send={send} />
+            {state.audio.input && (
+              <AudioRow
+                label="Sound input"
+                inputName={AUDIO_INPUT}
+                track={state.audio.input}
+                send={send}
+                watchMeters={watchMeters}
+              />
+            )}
+            {state.audio.media && state.media?.active && (
+              <AudioRow label="Media" inputName={state.media.active} track={state.audio.media} send={send} />
             )}
           </div>
         </section>
       )}
 
-      {state.media && <MediaPanel media={state.media} send={send} prefs={mediaPrefs} />}
+      {state.media && <MediaPanel media={state.media} send={send} prefs={mediaPrefs} onAir={mediaOnAir} />}
 
       {pickerOpen && (
         <div
@@ -335,6 +367,7 @@ export default function ControlPanel({ state, send, mediaPrefs }: ControlPanelPr
               <h3 className="text-base sm:text-sm font-semibold">Split screen layout</h3>
               <button
                 onClick={() => setPickerOpen(false)}
+                aria-label="Close the layout picker"
                 className="rounded-md px-1.5 text-ios-blue transition-colors hover:text-ios-blue-light"
               >
                 ✕
@@ -377,8 +410,10 @@ export default function ControlPanel({ state, send, mediaPrefs }: ControlPanelPr
                 secondary={displaySplit.secondary}
                 mediaLoaded={mediaLoaded}
                 onSelect={selectPair}
+                onLockedTap={() => showHint(mediaLockedHint)}
               />
             </div>
+            {hint && <p className="mt-2 animate-fade-in text-center text-sm sm:text-xs text-ios-orange">{hint}</p>}
 
             <button
               onClick={swap}
@@ -394,31 +429,38 @@ export default function ControlPanel({ state, send, mediaPrefs }: ControlPanelPr
   )
 }
 
-// Segmented control for choosing which two sources share the split
+// Segmented control for choosing which two sources share the split. Locked
+// pairs stay tappable so touch users get an explanation instead of silence.
 function PairSelector({
   featured,
   secondary,
   mediaLoaded,
   onSelect,
+  onLockedTap,
 }: {
   featured: SourceKey
   secondary: SourceKey
   mediaLoaded: boolean
   onSelect: (pair: Pair) => void
+  onLockedTap: () => void
 }) {
   return (
     <div className="flex overflow-hidden rounded-xl">
       {PAIRS.map((pair) => {
         const active = pairMatches(pair, featured, secondary)
-        const disabled = pair.needsMedia && !mediaLoaded
+        const locked = pair.needsMedia && !mediaLoaded
         return (
           <button
             key={pair.key}
-            disabled={disabled}
-            title={disabled ? 'Load a video on Media 0 in OBS first' : pair.title}
-            onClick={() => onSelect(pair)}
-            className={`px-3 py-1.5 text-sm sm:text-xs font-bold transition-colors duration-200 ease-out disabled:opacity-40 ${
-              active ? 'bg-ios-blue text-white' : 'bg-ios-fill text-ios-label2 hover:bg-ios-fill2'
+            aria-disabled={locked}
+            title={locked ? 'Load a video in the Media panel first' : pair.title}
+            onClick={locked ? onLockedTap : () => onSelect(pair)}
+            className={`px-3 py-1.5 text-sm sm:text-xs font-bold transition-colors duration-200 ease-out ${
+              locked
+                ? 'bg-ios-fill text-ios-label2 opacity-40'
+                : active
+                  ? 'bg-ios-blue text-white'
+                  : 'bg-ios-fill text-ios-label2 hover:bg-ios-fill2'
             }`}
           >
             {pair.label}
@@ -516,22 +558,28 @@ function FullscreenPreview({ source }: { source: SourceKey }) {
 
 // Mute button + dB fader. The slider stays under local control while
 // dragging (state echoes would fight the finger); sends are throttled during
-// the drag and committed on release.
+// the drag and committed on release. With watchMeters (dock only) a live
+// peak bar shows the input actually carries signal mid-show.
 function AudioRow({
   label,
   inputName,
   track,
   send,
+  watchMeters,
 }: {
   label: string
   inputName: string
   track: AudioTrack
   send: SendCommand
+  watchMeters?: ObsWatchMeters
 }) {
   const [drag, setDrag] = useState<number | null>(null)
   const dragRef = useRef<number | null>(null)
   const lastSent = useRef(0)
+  const [peakDb, setPeakDb] = useState(-100)
   const value = drag ?? Math.max(-60, Math.min(0, track.volumeDb))
+
+  useEffect(() => (watchMeters ? watchMeters(inputName, setPeakDb) : undefined), [watchMeters, inputName])
 
   const commit = (): void => {
     const v = dragRef.current
@@ -573,6 +621,7 @@ function AudioRow({
           max={0}
           step={0.5}
           value={value}
+          aria-label={`${label} volume`}
           onChange={(e) => {
             const v = Number(e.target.value)
             dragRef.current = v
@@ -589,8 +638,8 @@ function AudioRow({
           onBlur={commit}
           className="w-full"
         />
+        {watchMeters && <LevelMeter peakDb={peakDb} className="mt-1 h-1" />}
       </div>
     </div>
   )
 }
-

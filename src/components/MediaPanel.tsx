@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { MediaStatus } from '../../shared/protocol'
-import type { SendCommand } from './ControlPanel'
-import { MEDIA_INPUT } from '../lib/scenes'
+import { selectMediaSource } from '../lib/scenes'
+import type { SendCommand } from '../lib/scenes'
+import type { MediaPrefs } from '../lib/useMediaBehaviors'
 
 const ACTION = {
   play: 'OBS_WEBSOCKET_MEDIA_INPUT_ACTION_PLAY',
@@ -20,26 +21,19 @@ function baseName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path
 }
 
-export interface MediaPrefs {
-  /** Restart from 0:00 when a MEDIA fullscreen scene goes to program */
-  autoPlayFullscreen: boolean
-  /** Restart from 0:00 when media enters a split (PiP) slot on program */
-  autoPlayPip: boolean
-  /** Return to the previous layout when the video finishes on fullscreen */
-  autoReturn: boolean
-}
-
 interface MediaPanelProps {
   media: MediaStatus
   send: SendCommand
   /** Provided by the dock only — the dock executes these behaviors */
   prefs?: { value: MediaPrefs; onChange: (patch: Partial<MediaPrefs>) => void }
+  /** Media is on the stream right now — playback actions are audience-visible */
+  onAir?: boolean
 }
 
 // Transport controls for the media video. Mirrored like everything else: state
 // comes from the dock's snapshots, actions go through `send` (direct on the
 // dock, via the relay on remotes). The file itself is set in OBS on Media 0.
-export default function MediaPanel({ media, send, prefs }: MediaPanelProps) {
+export default function MediaPanel({ media, send, prefs, onAir = false }: MediaPanelProps) {
   // Slider stays under local control while scrubbing so 1s state polls don't
   // fight the operator's finger. The ref mirrors the latest value because a
   // quick click fires input+pointerup before state flushes — committing from
@@ -56,6 +50,8 @@ export default function MediaPanel({ media, send, prefs }: MediaPanelProps) {
   const hasDuration = media.durationMs > 0
   const playing = media.state === 'playing'
   const cursor = scrub ?? pendingSeek ?? Math.min(media.cursorMs, media.durationMs)
+  // Transport targets whichever source is shown in the MEDIA scene
+  const inputName = media.active
 
   // Release the optimistic position once OBS reports a cursor near the
   // target, or give up after a beat if the seek was ignored.
@@ -69,7 +65,7 @@ export default function MediaPanel({ media, send, prefs }: MediaPanelProps) {
     return () => clearTimeout(timer)
   }, [pendingSeek, media.cursorMs])
 
-  const trigger = (action: string): void => send('TriggerMediaInputAction', { inputName: MEDIA_INPUT, mediaAction: action })
+  const trigger = (action: string): void => send('TriggerMediaInputAction', { inputName, mediaAction: action })
 
   function cue(): void {
     // restart puts the video at 0:00 playing; the pause right after holds it
@@ -79,7 +75,7 @@ export default function MediaPanel({ media, send, prefs }: MediaPanelProps) {
   }
 
   function seek(ms: number): void {
-    send('SetMediaInputCursor', { inputName: MEDIA_INPUT, mediaCursor: ms })
+    send('SetMediaInputCursor', { inputName, mediaCursor: ms })
   }
 
   function commitScrub(): void {
@@ -100,79 +96,142 @@ export default function MediaPanel({ media, send, prefs }: MediaPanelProps) {
 
   return (
     <section className="space-y-2">
-      <h3 className="text-sm sm:text-xs font-semibold uppercase tracking-wider text-ios-label2">Media</h3>
-      <div className="space-y-3 rounded-2xl border border-transparent bg-ios-card p-3">
-        <div className="flex items-center justify-between gap-2">
-          <span className="min-w-0 truncate text-sm sm:text-xs text-ios-label2">
-            {media.file ? baseName(media.file) : 'No video loaded'}
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm sm:text-xs font-semibold uppercase tracking-wider text-ios-label2">Media</h3>
+        {onAir && (
+          <span
+            title="Media is visible on the stream — playback changes are live for the audience"
+            className="inline-flex animate-fade-in items-center gap-1 rounded-full bg-ios-red/20 px-2 py-0.5 text-xs font-bold tracking-wide text-ios-red"
+          >
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-ios-red" />
+            ON AIR
           </span>
-          {hasFile && (
-            <span className="shrink-0 text-sm sm:text-xs text-ios-label3 capitalize">{media.state}</span>
-          )}
-        </div>
+        )}
+      </div>
+      <div className="space-y-3 rounded-2xl border border-transparent bg-ios-card p-3">
+        {media.sources.length > 1 && (
+          <div className="divide-y divide-ios-sep/60 overflow-hidden rounded-xl bg-ios-fill/50">
+            {media.sources.map((s) => {
+              const active = s.name === media.active
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => selectMediaSource(send, media, s.name)}
+                  title={active ? `${s.name} is shown in the media slots` : `Show ${s.name} in the media slots`}
+                  className={`flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left text-sm sm:text-xs transition-colors duration-200 ease-out ${
+                    active ? 'text-white' : 'text-ios-label2 hover:bg-ios-fill'
+                  }`}
+                >
+                  <span className="min-w-0 truncate">{s.name}</span>
+                  {active && (
+                    <span className="shrink-0 rounded-full bg-ios-blue/20 px-2 py-0.5 text-xs font-semibold text-ios-blue">
+                      Showing
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
 
-        {hasFile ? (
-          <>
-            {hasDuration && (
-            <div className="flex items-center gap-2">
-              <span className="w-10 shrink-0 text-right text-sm sm:text-xs tabular-nums text-ios-label2">{formatTime(cursor)}</span>
-              <input
-                type="range"
-                min={0}
-                max={media.durationMs}
-                step={100}
-                value={cursor}
-                onChange={(e) => {
-                  const v = Number(e.target.value)
-                  scrubRef.current = v
-                  setScrub(v)
-                }}
-                onPointerUp={commitScrub}
-                onPointerCancel={commitScrub}
-                onKeyUp={commitScrub}
-                onBlur={commitScrub}
-                className="min-w-0 flex-1"
-              />
-              <span className="w-10 shrink-0 text-sm sm:text-xs tabular-nums text-ios-label2">{formatTime(media.durationMs)}</span>
-            </div>
-            )}
-
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                onClick={cue}
-                title="Cue: rewind to 0:00 and hold paused, armed for the moment — switch to Media and press Play when it's time"
-                className="rounded-xl bg-ios-fill px-3 py-2 text-sm sm:text-xs font-semibold text-ios-blue transition-all duration-200 ease-out hover:bg-ios-fill2 active:scale-[0.98]"
-              >
-                Cue
-              </button>
-              <button
-                onClick={() => trigger(playing ? ACTION.pause : ACTION.play)}
-                title={
-                  playing
-                    ? 'Pause: freeze the video on the current frame — Play resumes from here'
-                    : media.state === 'ended'
-                      ? 'Replay: the video finished — play it again from the beginning'
-                      : 'Play: start or resume playback from the current position'
-                }
-                className={`rounded-xl px-3 py-2 text-sm sm:text-xs font-semibold transition-all duration-200 ease-out active:scale-[0.98] ${
-                  playing ? 'bg-ios-fill2 text-white hover:bg-[#48484a]' : 'bg-ios-blue text-white hover:bg-ios-blue-light'
-                }`}
-              >
-                {playing ? 'Pause' : media.state === 'ended' ? 'Replay' : 'Play'}
-              </button>
-              <button
-                onClick={() => trigger(ACTION.restart)}
-                title="Restart: play immediately from 0:00 — use while the video is live on stream and needs to start over"
-                className="rounded-xl bg-ios-fill px-3 py-2 text-sm sm:text-xs font-semibold text-ios-blue transition-all duration-200 ease-out hover:bg-ios-fill2 active:scale-[0.98]"
-              >
-                Restart
-              </button>
-            </div>
-          </>
-        ) : (
+        {media.active === null ? (
           <p className="text-sm sm:text-xs text-ios-label3">
-            Load a video on the <span className="text-ios-label2">{MEDIA_INPUT}</span> source in OBS.
+            {media.sources.length === 0
+              ? 'The MEDIA scene has no media sources — add one in OBS (any video, image, or browser source) and it appears here.'
+              : 'No media source is visible — tap one above to show it.'}
           </p>
+        ) : !media.playable ? (
+          <p className="text-sm sm:text-xs text-ios-label3">
+            <span className="text-ios-label2">{media.active}</span> is on the media slots. Playback controls apply to
+            video sources only.
+          </p>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate text-sm sm:text-xs text-ios-label2">
+                {media.file ? baseName(media.file) : 'No video loaded'}
+              </span>
+              {hasFile && <span className="shrink-0 text-sm sm:text-xs text-ios-label3 capitalize">{media.state}</span>}
+            </div>
+
+            {hasFile ? (
+              <>
+                {hasDuration && (
+                  <div className="flex items-center gap-2">
+                    <span className="w-10 shrink-0 text-right text-sm sm:text-xs tabular-nums text-ios-label2">
+                      {formatTime(cursor)}
+                    </span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={media.durationMs}
+                      step={100}
+                      value={cursor}
+                      onChange={(e) => {
+                        const v = Number(e.target.value)
+                        scrubRef.current = v
+                        setScrub(v)
+                      }}
+                      onPointerUp={commitScrub}
+                      onPointerCancel={commitScrub}
+                      onKeyUp={commitScrub}
+                      onBlur={commitScrub}
+                      aria-label="Playback position"
+                      className="min-w-0 flex-1"
+                    />
+                    <span className="w-10 shrink-0 text-sm sm:text-xs tabular-nums text-ios-label2">
+                      {formatTime(media.durationMs)}
+                    </span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    onClick={cue}
+                    title="Cue: rewind to 0:00 and hold paused, armed for the moment — switch to Media and press Play when it's time"
+                    className="rounded-xl bg-ios-fill px-3 py-2 text-sm sm:text-xs font-semibold text-ios-blue transition-all duration-200 ease-out hover:bg-ios-fill2 active:scale-[0.98]"
+                  >
+                    Cue
+                  </button>
+                  <button
+                    onClick={() => trigger(playing ? ACTION.pause : ACTION.play)}
+                    title={
+                      playing
+                        ? 'Pause: freeze the video on the current frame — Play resumes from here'
+                        : media.state === 'ended'
+                          ? 'Replay: the video finished — play it again from the beginning'
+                          : 'Play: start or resume playback from the current position'
+                    }
+                    className={`rounded-xl px-3 py-2 text-sm sm:text-xs font-semibold transition-all duration-200 ease-out active:scale-[0.98] ${
+                      playing
+                        ? 'bg-ios-fill2 text-white hover:bg-[#48484a]'
+                        : 'bg-ios-blue text-white hover:bg-ios-blue-light'
+                    }`}
+                  >
+                    {playing ? 'Pause' : media.state === 'ended' ? 'Replay' : 'Play'}
+                  </button>
+                  <button
+                    onClick={() => trigger(ACTION.restart)}
+                    title="Restart: play immediately from 0:00 — use while the video is live on stream and needs to start over"
+                    className="rounded-xl bg-ios-fill px-3 py-2 text-sm sm:text-xs font-semibold text-ios-blue transition-all duration-200 ease-out hover:bg-ios-fill2 active:scale-[0.98]"
+                  >
+                    Restart
+                  </button>
+                </div>
+                <p className="text-xs text-ios-label3">
+                  Cue rewinds to 0:00 and holds paused, ready for the moment. Restart plays from 0:00 immediately.
+                </p>
+              </>
+            ) : (
+              <p className="text-sm sm:text-xs text-ios-label3">
+                Load a video on the <span className="text-ios-label2">{media.active}</span> source in OBS.
+              </p>
+            )}
+          </>
+        )}
+
+        {!prefs && media.playable && (
+          <p className="text-xs text-ios-label3">Auto-play and auto-return behavior is set on the dock.</p>
         )}
 
         {prefs && (

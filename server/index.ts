@@ -1,6 +1,15 @@
 import http from 'node:http'
 import crypto from 'node:crypto'
-import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import {
+  accessSync,
+  constants as fsConstants,
+  createReadStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { WebSocketServer, WebSocket } from 'ws'
@@ -35,6 +44,20 @@ const MIME: Record<string, string> = {
 const server = http.createServer((req, res) => {
   try {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
+    if (url.pathname === '/healthz') {
+      // dataWritable false means a deploy would silently lose all sessions —
+      // the persistence volume isn't mounted or isn't writable.
+      let dataWritable = true
+      try {
+        mkdirSync(path.dirname(DATA_FILE), { recursive: true })
+        accessSync(path.dirname(DATA_FILE), fsConstants.W_OK)
+      } catch {
+        dataWritable = false
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ ok: true, sessions: sessions.size, connections: wss.clients.size, dataWritable }))
+      return
+    }
     let filePath = path.normalize(path.join(DIST, decodeURIComponent(url.pathname)))
     if (!filePath.startsWith(DIST)) {
       res.writeHead(403).end()
@@ -92,10 +115,29 @@ interface SocketMeta {
   role: 'dock' | 'remote' | null
   session: Session | null
   pinFailures: number
+  ip: string
 }
 
 const sessions = new Map<string, Session>()
 const meta = new WeakMap<WebSocket, SocketMeta>()
+
+// Cross-connection brute-force guard: per-socket limits reset on reconnect,
+// so failed join/resume attempts are also counted per IP over a window.
+const AUTH_WINDOW_MS = 10 * 60_000
+const AUTH_MAX_FAILURES = 30
+const authFailures = new Map<string, { count: number; resetAt: number }>()
+
+function authFailed(ip: string): void {
+  const now = Date.now()
+  const entry = authFailures.get(ip)
+  if (!entry || entry.resetAt < now) authFailures.set(ip, { count: 1, resetAt: now + AUTH_WINDOW_MS })
+  else entry.count += 1
+}
+
+function authBlocked(ip: string): boolean {
+  const entry = authFailures.get(ip)
+  return entry !== undefined && entry.resetAt >= Date.now() && entry.count >= AUTH_MAX_FAILURES
+}
 
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
 function genCode(): string {
@@ -139,7 +181,8 @@ function restore(): void {
       session.expireTimer = setTimeout(() => endSession(session), GRACE_MS)
       sessions.set(session.code, session)
     }
-    if (records.length > 0) console.log(`restored ${records.length} session(s), docks have ${GRACE_MS / 1000}s to resume`)
+    if (records.length > 0)
+      console.log(`restored ${records.length} session(s), docks have ${GRACE_MS / 1000}s to resume`)
   } catch (e) {
     console.error('could not restore sessions:', e)
   }
@@ -150,13 +193,18 @@ function send(ws: WebSocket | null, msg: ServerMessage): void {
 }
 
 function broadcast(session: Session, msg: ServerMessage): void {
-  for (const remote of session.remotes) send(remote, msg)
+  // Serialize once — state snapshots go to every remote, every second
+  const json = JSON.stringify(msg)
+  for (const remote of session.remotes) {
+    if (remote.readyState === WebSocket.OPEN) remote.send(json)
+  }
 }
 
 function endSession(session: Session): void {
   if (session.expireTimer) clearTimeout(session.expireTimer)
   sessions.delete(session.code)
   persist()
+  console.log(`session ${session.code} ended (${sessions.size} active)`)
   broadcast(session, { type: 'ended' })
   for (const remote of session.remotes) remote.close()
   session.remotes.clear()
@@ -166,16 +214,16 @@ function handleMessage(ws: WebSocket, m: SocketMeta, msg: ClientMessage): void {
   switch (msg.type) {
     case 'create': {
       if (m.session) {
-        send(ws, { type: 'error', message: 'This connection is already in a session' })
+        send(ws, { type: 'error', message: 'This connection is already in a session', code: 'bad-request' })
         return
       }
       if (sessions.size >= MAX_SESSIONS) {
-        send(ws, { type: 'error', message: 'The server is full — try again later' })
+        send(ws, { type: 'error', message: 'The server is full — try again later', code: 'full' })
         return
       }
       const pin = String(msg.pin)
       if (!/^\d{4,8}$/.test(pin)) {
-        send(ws, { type: 'error', message: 'PIN must be 4-8 digits' })
+        send(ws, { type: 'error', message: 'PIN must be 4-8 digits', code: 'bad-request' })
         return
       }
       const session: Session = {
@@ -193,23 +241,33 @@ function handleMessage(ws: WebSocket, m: SocketMeta, msg: ClientMessage): void {
       m.role = 'dock'
       m.session = session
       persist()
+      console.log(`session ${session.code} created (${sessions.size} active)`)
       send(ws, { type: 'created', code: session.code, token: session.token })
       break
     }
 
     case 'resume': {
-      const session = sessions.get(String(msg.code).toUpperCase().trim())
-      if (!session || session.token !== String(msg.token)) {
-        send(ws, { type: 'error', message: 'Session expired or invalid' })
+      if (authBlocked(m.ip)) {
+        send(ws, { type: 'error', message: 'Too many attempts — try again later', code: 'rate-limited' })
+        ws.close(4001, 'rate limited')
         return
       }
-      // A stale dock socket may still be attached (e.g. the dock page reloaded
-      // before the old connection timed out) — detach and drop it.
+      const session = sessions.get(String(msg.code).toUpperCase().trim())
+      if (!session || session.token !== String(msg.token)) {
+        authFailed(m.ip)
+        send(ws, { type: 'error', message: 'Session expired or invalid', code: 'expired' })
+        return
+      }
+      // A stale dock socket may still be attached (page reloaded, or a second
+      // dock window is open). Tell it explicitly so it stops auto-resuming —
+      // otherwise two live docks kick each other in an endless loop.
       const old = session.dock
       if (old && old !== ws) {
         const oldMeta = meta.get(old)
         if (oldMeta) oldMeta.session = null
-        old.terminate()
+        send(old, { type: 'superseded' })
+        // Give the notice a moment to flush; the socket may also be dead
+        setTimeout(() => old.terminate(), 1000)
       }
       if (session.expireTimer) {
         clearTimeout(session.expireTimer)
@@ -218,6 +276,7 @@ function handleMessage(ws: WebSocket, m: SocketMeta, msg: ClientMessage): void {
       session.dock = ws
       m.role = 'dock'
       m.session = session
+      console.log(`session ${session.code} resumed by dock${old && old !== ws ? ' (superseded old socket)' : ''}`)
       send(ws, { type: 'resumed', code: session.code, name: session.name })
       broadcast(session, { type: 'dock-status', online: true })
       send(ws, { type: 'peers', count: session.remotes.size })
@@ -226,17 +285,24 @@ function handleMessage(ws: WebSocket, m: SocketMeta, msg: ClientMessage): void {
 
     case 'join': {
       if (m.session) {
-        send(ws, { type: 'error', message: 'This connection is already in a session' })
+        send(ws, { type: 'error', message: 'This connection is already in a session', code: 'bad-request' })
+        return
+      }
+      if (authBlocked(m.ip)) {
+        send(ws, { type: 'error', message: 'Too many attempts — try again later', code: 'rate-limited' })
+        ws.close(4001, 'rate limited')
         return
       }
       const session = sessions.get(String(msg.code).toUpperCase().trim())
       if (!session) {
-        send(ws, { type: 'error', message: 'Session not found' })
+        authFailed(m.ip)
+        send(ws, { type: 'error', message: 'Session not found', code: 'not-found' })
         return
       }
       if (session.pin !== String(msg.pin)) {
         m.pinFailures += 1
-        send(ws, { type: 'error', message: 'Wrong PIN' })
+        authFailed(m.ip)
+        send(ws, { type: 'error', message: 'Wrong PIN', code: 'wrong-pin' })
         if (m.pinFailures >= MAX_PIN_ATTEMPTS) ws.close(4001, 'too many PIN attempts')
         return
       }
@@ -256,8 +322,21 @@ function handleMessage(ws: WebSocket, m: SocketMeta, msg: ClientMessage): void {
 
     case 'state': {
       if (m.role !== 'dock' || !m.session) return
-      m.session.state = msg.state
-      broadcast(m.session, { type: 'state', state: msg.state })
+      // Shape-check before caching and fanning out: one malformed frame
+      // must not render-crash every connected remote.
+      const s = msg.state as ObsState | null | undefined
+      if (
+        !s ||
+        typeof s !== 'object' ||
+        typeof s.currentScene !== 'string' ||
+        !Array.isArray(s.scenes) ||
+        !Array.isArray(s.layers) ||
+        typeof s.audio !== 'object'
+      ) {
+        return
+      }
+      m.session.state = s
+      broadcast(m.session, { type: 'state', state: s })
       break
     }
 
@@ -295,6 +374,13 @@ function handleMessage(ws: WebSocket, m: SocketMeta, msg: ClientMessage): void {
       endSession(session)
       break
     }
+
+    case 'ping': {
+      // App-level liveness: browsers auto-answer ws pings but can't send
+      // them, so clients probe with this to detect half-open connections.
+      send(ws, { type: 'pong' })
+      break
+    }
   }
 }
 
@@ -302,8 +388,14 @@ function handleMessage(ws: WebSocket, m: SocketMeta, msg: ClientMessage): void {
 // being stored per-session and rebroadcast to every remote.
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 256 * 1024 })
 
-wss.on('connection', (ws) => {
-  const m: SocketMeta = { isAlive: true, role: null, session: null, pinFailures: 0 }
+wss.on('connection', (ws, req) => {
+  // Behind the reverse proxy the socket address is the proxy — prefer the
+  // forwarded client address for the auth throttle.
+  const forwarded = String(req.headers['x-forwarded-for'] ?? '')
+    .split(',')[0]!
+    .trim()
+  const ip = forwarded || req.socket.remoteAddress || 'unknown'
+  const m: SocketMeta = { isAlive: true, role: null, session: null, pinFailures: 0, ip }
   meta.set(ws, m)
 
   ws.on('pong', () => {
@@ -327,6 +419,7 @@ wss.on('connection', (ws) => {
     if (m.role === 'dock') {
       if (session.dock !== ws) return
       // Don't end the session — give the dock GRACE_MS to come back.
+      console.log(`session ${session.code}: dock disconnected, ${GRACE_MS / 1000}s grace`)
       session.dock = null
       broadcast(session, { type: 'dock-status', online: false })
       session.expireTimer = setTimeout(() => endSession(session), GRACE_MS)
@@ -349,6 +442,11 @@ setInterval(() => {
     m.isAlive = false
     ws.ping()
   }
+  // Expired throttle entries don't need to linger
+  const now = Date.now()
+  for (const [ip, entry] of authFailures) {
+    if (entry.resetAt < now) authFailures.delete(ip)
+  }
 }, 30_000)
 
 wss.on('error', (e) => {
@@ -359,6 +457,21 @@ server.on('error', (e) => {
   console.error('server error:', e.message)
   process.exit(1)
 })
+
+// Graceful shutdown (every deploy sends SIGTERM): persist sessions, tell
+// clients we're going away (they redial with backoff and resume), then exit.
+let shuttingDown = false
+function shutdown(): void {
+  if (shuttingDown) return
+  shuttingDown = true
+  console.log('shutting down — persisting sessions and closing connections')
+  persist()
+  for (const ws of wss.clients) ws.close(1001, 'server restarting')
+  server.close(() => process.exit(0))
+  setTimeout(() => process.exit(0), 3000).unref()
+}
+process.on('SIGTERM', shutdown)
+process.on('SIGINT', shutdown)
 
 restore()
 server.listen(PORT, () => {

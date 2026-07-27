@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { LayerInfo } from '../../shared/protocol'
-import type { SendCommand } from './ControlPanel'
 import { OVERLAY_SCENE, RUNNING_TEXT_INPUT, LOGO_INPUT } from '../lib/overlay'
 import { SCREENS, parseScene } from '../lib/scenes'
+import type { SendCommand } from '../lib/scenes'
 
 interface LayerPanelProps {
   layers: LayerInfo[]
@@ -64,7 +64,9 @@ export default function LayerPanel({ layers, runningText, currentScene, scenes, 
           return (
             <div key={layer.id} className="px-3 py-2">
               <div className="flex items-center justify-between gap-2">
-                <span className={`min-w-0 truncate text-sm sm:text-xs ${layer.enabled ? 'text-white' : 'text-ios-label3'}`}>
+                <span
+                  className={`min-w-0 truncate text-sm sm:text-xs ${layer.enabled ? 'text-white' : 'text-ios-label3'}`}
+                >
                   {layer.name}
                 </span>
                 <div className="flex shrink-0 items-center gap-1.5">
@@ -118,12 +120,20 @@ export default function LayerPanel({ layers, runningText, currentScene, scenes, 
           )
         })}
 
+        {screenRows.length > 0 && layers.length > 0 && (
+          <div className="px-3 pb-1 pt-2">
+            <div className="text-xs font-semibold uppercase tracking-wider text-ios-label3">Screens</div>
+            <div className="text-xs text-ios-label3">
+              Full-screen scenes — one at a time; off returns to the layout.
+            </div>
+          </div>
+        )}
         {screenRows.map((spec) => {
           const on = currentScene === spec.scene
           return (
             <div key={spec.key} className="flex items-center justify-between gap-2 px-3 py-2">
               <span className={`min-w-0 truncate text-sm sm:text-xs ${on ? 'text-white' : 'text-ios-label3'}`}>
-                {spec.input}
+                {spec.label}
               </span>
               <Switch
                 on={on}

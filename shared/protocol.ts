@@ -2,7 +2,23 @@
 
 export type MediaPlayState = 'playing' | 'paused' | 'stopped' | 'ended' | 'none'
 
+/** One candidate source inside the MEDIA scene (operators add these in OBS) */
+export interface MediaSourceInfo {
+  /** Scene item id within the MEDIA scene */
+  id: number
+  name: string
+  /** OBS input kind, or 'scene' for a nested scene */
+  kind: string
+  visible: boolean
+}
+
 export interface MediaStatus {
+  /** Every source found in the MEDIA scene, top-most first */
+  sources: MediaSourceInfo[]
+  /** Name of the source currently shown (top-most visible item), or null */
+  active: string | null
+  /** True when the active source supports playback control (video kinds) */
+  playable: boolean
   /** Full path of the loaded file, or null when nothing is loaded */
   file: string | null
   state: MediaPlayState
@@ -34,6 +50,13 @@ export interface ObsState {
   media: MediaStatus | null
 }
 
+/**
+ * Machine-readable error kinds. Clients decide recoverability from the code,
+ * never from the human-readable message: only 'expired' means a stored
+ * session is definitively gone and its resume token may be discarded.
+ */
+export type ErrorCode = 'expired' | 'full' | 'not-found' | 'wrong-pin' | 'bad-request' | 'rate-limited'
+
 export type ClientMessage =
   | { type: 'create'; name: string; pin: string }
   | { type: 'resume'; code: string; token: string }
@@ -43,6 +66,8 @@ export type ClientMessage =
   | { type: 'command'; request: string; params?: Record<string, unknown> }
   | { type: 'command-error'; request: string; message: string }
   | { type: 'end' }
+  /** Liveness probe — browsers can't detect half-open sockets on their own */
+  | { type: 'ping' }
 
 export type ServerMessage =
   | { type: 'created'; code: string; token: string }
@@ -55,4 +80,7 @@ export type ServerMessage =
   | { type: 'peers'; count: number }
   | { type: 'dock-status'; online: boolean }
   | { type: 'ended' }
-  | { type: 'error'; message: string }
+  /** Another dock instance resumed this session — this connection is done */
+  | { type: 'superseded' }
+  | { type: 'pong' }
+  | { type: 'error'; message: string; code?: ErrorCode }

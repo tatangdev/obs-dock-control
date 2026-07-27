@@ -8,6 +8,9 @@ const PHONE_REF_W = 360
 const PHONE_MAX_SCALE = 1.3
 
 function computeScale(): number {
+  // Touch devices only — a narrow OBS dock panel is small but mouse-driven,
+  // and must keep OBS-density text rather than phone-scale text.
+  if (!window.matchMedia('(pointer: coarse)').matches) return 1
   const minSide = Math.min(window.innerWidth, window.innerHeight)
   if (minSide >= PHONE_MAX) return 1
   return Math.min(PHONE_MAX_SCALE, Math.max(1, minSide / PHONE_REF_W))

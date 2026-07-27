@@ -12,4 +12,6 @@ ENV NODE_ENV=production
 ENV PORT=8787
 EXPOSE 8787
 
-CMD ["npm", "start"]
+# Run tsx directly (not via npm) so SIGTERM reaches the server process and
+# the graceful-shutdown handler can persist sessions before a deploy restart.
+CMD ["./node_modules/.bin/tsx", "server/index.ts"]

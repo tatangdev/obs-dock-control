@@ -28,7 +28,9 @@ export default class ErrorBoundary extends Component<Props, State> {
     return (
       <div className="mx-auto flex min-h-full max-w-sm flex-col justify-center p-4">
         <h1 className="mb-2 text-xl sm:text-lg font-semibold">Something went wrong</h1>
-        <p className="mb-1 text-base sm:text-sm text-ios-label2">The app hit an unexpected error and stopped rendering.</p>
+        <p className="mb-1 text-base sm:text-sm text-ios-label2">
+          The app hit an unexpected error and stopped rendering.
+        </p>
         <p className="mb-4 break-all font-mono text-sm sm:text-xs text-ios-red">{this.state.error.message}</p>
         <button
           onClick={() => location.reload()}
