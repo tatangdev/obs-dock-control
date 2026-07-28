@@ -88,15 +88,13 @@ export default function Dock() {
     return () => clearInterval(timer)
   }, [obsStatus, session.status, connect])
 
-  // The invite card is the first thing needed at an event: open it whenever
-  // the session is live with nobody connected, close it when the first remote
-  // arrives. Manual toggling still works in between.
+  // Opened only via the Invite button; close it once the first remote arrives
+  // so a scanned card doesn't linger over the controls.
   const prevRemoteCount = useRef(0)
   useEffect(() => {
-    if (session.status === 'live' && session.remoteCount === 0) setQrOpen(true)
-    else if (session.remoteCount > 0 && prevRemoteCount.current === 0) setQrOpen(false)
+    if (session.remoteCount > 0 && prevRemoteCount.current === 0) setQrOpen(false)
     prevRemoteCount.current = session.remoteCount
-  }, [session.status, session.remoteCount])
+  }, [session.remoteCount])
 
   // An armed end-session confirm disarms itself if left alone
   useEffect(() => {

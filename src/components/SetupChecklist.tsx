@@ -4,12 +4,15 @@ import type { LayerInfo, MediaStatus } from '../../shared/protocol'
 import type { ObsQuery, ObsSubscribe } from '../lib/useObs'
 import {
   MEDIA_CLONES,
+  OVERLAY_MEDIA_SCENES,
   SCREENS,
   createScreenScenes,
   SPLIT_BOXES,
   alignLayouts,
   isSetupReady,
+  nestBackground,
   parseScene,
+  repairOverlaySlots,
   syncMediaClones,
 } from '../lib/scenes'
 import {
@@ -45,6 +48,10 @@ const WATCH_EVENTS: readonly (keyof OBSEventTypes)[] = [
   'CurrentSceneCollectionChanged',
   'SceneListChanged',
   'SceneItemEnableStateChanged',
+  // levels feed the media-clone loudness drift check (debounced, so a fader
+  // drag collapses into one re-run)
+  'InputVolumeChanged',
+  'InputMuteStateChanged',
   // emitted by obs-websocket >= 5.4; missing from the 5.0 typings
   'InputSettingsChanged' as keyof OBSEventTypes,
 ]
@@ -59,6 +66,51 @@ async function inputExists(query: ObsQuery, inputName: string): Promise<boolean>
   } catch {
     return false
   }
+}
+
+// Split slots render clones — each must point at the source the MEDIA scene
+// shows (or fullscreen and PiP show different media), carry audio, and match
+// the active source's volume/mute (clones mix their own audio, so the Media
+// fader's fan-out or an interrupted cue gate can leave them drifted).
+async function mediaCloneDriftProbe(query: ObsQuery, active: string): Promise<boolean> {
+  const volume = await query<{ inputVolumeDb: number }>('GetInputVolume', { inputName: active }).catch(() => null)
+  const muted = await query<{ inputMuted: boolean }>('GetInputMute', { inputName: active }).catch(() => null)
+  for (const clone of MEDIA_CLONES) {
+    const settings = await query<{ inputSettings: Record<string, unknown> }>('GetInputSettings', {
+      inputName: clone,
+    })
+      .then((r) => r.inputSettings)
+      .catch(() => null)
+    if (settings === null) continue // clone missing — the overlay-slot repair owns that
+    const target = String(settings['clone'] ?? '')
+    if (target === '') continue // never configured — nothing to compare against
+    if (target !== active || settings['audio'] !== true) return true
+    if (muted) {
+      const m = await query<{ inputMuted: boolean }>('GetInputMute', { inputName: clone }).catch(() => null)
+      if (m !== null && m.inputMuted !== muted.inputMuted) return true
+    }
+    if (volume) {
+      const v = await query<{ inputVolumeDb: number }>('GetInputVolume', { inputName: clone }).catch(() => null)
+      if (v !== null && Math.abs(v.inputVolumeDb - volume.inputVolumeDb) > 0.5) return true
+    }
+  }
+  return false
+}
+
+// Screen scenes must nest BACKGROUND — it carries the Audio Input, so a
+// screen without it cuts the sound the moment it hits program. Returns the
+// scenes that lack it (missing scenes are skipped; the screens row owns those).
+async function screensSansBackgroundProbe(query: ObsQuery): Promise<string[]> {
+  const names = await Promise.all(
+    SCREENS.map((s) =>
+      query<{ sceneItems: { sourceName: string }[] }>('GetSceneItemList', { sceneName: s.scene })
+        .then((r): string | null =>
+          r.sceneItems.some((i) => i.sourceName === BACKGROUND_SCENE) ? null : s.scene,
+        )
+        .catch((): string | null => null),
+    ),
+  )
+  return names.filter((n): n is string => n !== null)
 }
 
 async function inputKindOf(query: ObsQuery, inputName: string): Promise<string | null> {
@@ -232,19 +284,25 @@ export default function SetupChecklist({
           })
           .catch(() => null),
       ]).then((probes) => probes.some((p) => p === true)),
-      // Split slots render clones — each must point at the source the MEDIA
-      // scene shows, or fullscreen and PiP show different media (a partial
-      // selectMediaSource failure leaves exactly this drift behind).
-      mediaCloneDrift:
-        mediaActive === null
-          ? Promise.resolve(false)
-          : Promise.all(
-              MEDIA_CLONES.map((clone) =>
-                query<{ inputSettings: Record<string, unknown> }>('GetInputSettings', { inputName: clone })
-                  .then((r) => String(r.inputSettings['clone'] ?? ''))
-                  .catch(() => null),
-              ),
-            ).then((targets) => targets.some((t) => t !== null && t !== '' && t !== mediaActive)),
+      mediaCloneDrift: mediaActive === null ? Promise.resolve(false) : mediaCloneDriftProbe(query, mediaActive),
+      // Screens without the BACKGROUND nest lose the Audio Input the moment
+      // they hit program — dead air. Generated collections nest it; screens
+      // created by an older dock repair did not.
+      screensSansBackground: screensSansBackgroundProbe(query),
+      // Pre-media-deck collections hard-wire 'Media 0' into the overlay
+      // scenes' full-frame slot — it keeps showing its own video (and audio)
+      // no matter which deck source is selected.
+      overlaySlotStale: Promise.all(
+        OVERLAY_MEDIA_SCENES.map((sceneName) =>
+          query<{ sceneItems: { sourceName: string }[] }>('GetSceneItemList', { sceneName })
+            .then(
+              (r) =>
+                r.sceneItems.some((i) => i.sourceName === 'Media 0') ||
+                !r.sceneItems.some((i) => i.sourceName === 'Media 6'),
+            )
+            .catch(() => null),
+        ),
+      ).then((probes) => probes.some((p) => p === true)),
       screens: Promise.all(SCREENS.map((s) => inputHasSetting(query, s.input, ['file']))),
     })
     if (seq !== checksSeq.current) return
@@ -425,11 +483,53 @@ export default function SetupChecklist({
       })
     }
 
-    if (c.mediaCloneDrift === true && mediaActive !== null) {
+    if (c.overlaySlotStale === true) {
+      found.push({
+        key: 'overlay-media-slot',
+        label: 'Overlay media slot outdated',
+        problem: 'Overlay layouts show Media 0 directly — picking another media source would not change them.',
+        fix: {
+          label: 'Repair overlay slots',
+          run: () => repairOverlaySlots(query, mediaActive ?? 'Media 0'),
+        },
+        guide: {
+          title: 'Repair the overlay media slots',
+          steps: [
+            'The overlay layouts were built before the media deck — their full-frame slot is the Media 0 source itself.',
+            'Press "Repair overlay slots" — the dock creates the "Media 6" clone and swaps it in, so overlay follows whatever the deck selects.',
+            'Nothing else changes: the PiP card, overlay and background keep their stacking order.',
+          ],
+        },
+      })
+    }
+
+    if (!backgroundMissing && c.screensSansBackground.length > 0) {
+      const affected = c.screensSansBackground
+      found.push({
+        key: 'screens-audio',
+        label: 'Screens drop the sound input',
+        problem: 'Some screen scenes lack the shared background nest — switching to them cuts the sound input (dead air).',
+        fix: {
+          label: 'Repair screens',
+          run: () => nestBackground(query, affected),
+        },
+        guide: {
+          title: 'Keep the sound running on screens',
+          steps: [
+            'The BACKGROUND scene carries the Audio Input, so every scene must nest it.',
+            `Missing from: ${affected.join(', ')}.`,
+            'Press "Repair screens" — BACKGROUND is slotted beneath the screen image; nothing visible changes.',
+          ],
+        },
+      })
+    }
+
+    if (c.overlaySlotStale !== true && c.mediaCloneDrift === true && mediaActive !== null) {
       found.push({
         key: 'media-clones',
         label: 'Media slots out of sync',
-        problem: 'Split layouts would show a different media source than fullscreen.',
+        problem:
+          'Split layouts would show a different media source than fullscreen, or play its sound wrong (muted or at another level).',
         fix: {
           label: 'Sync media slots',
           run: () => syncMediaClones(query, mediaActive),
@@ -437,8 +537,8 @@ export default function SetupChecklist({
         guide: {
           title: 'Sync the media slots',
           steps: [
-            'The split layouts show media through clone sources (Media 1–5).',
-            `They must point at the source the MEDIA scene shows ("${mediaActive}").`,
+            'The split layouts show media through clone sources (Media 1–6).',
+            `They must point at the source the MEDIA scene shows ("${mediaActive}") and pass its audio through.`,
             'Press "Sync media slots" to repoint them all — or pick the source again in the Media panel.',
           ],
         },

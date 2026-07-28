@@ -152,7 +152,8 @@ describe('selectMediaSource', () => {
 
     const repoints = calls.filter((c) => c.request === 'SetInputSettings')
     expect(repoints.map((c) => c.params?.['inputName'])).toEqual([...MEDIA_CLONES])
-    for (const c of repoints) expect(c.params?.['inputSettings']).toEqual({ clone: 'Video B' })
+    // audio: true — clones are video-only by default, which muted split layouts
+    for (const c of repoints) expect(c.params?.['inputSettings']).toEqual({ clone: 'Video B', audio: true })
   })
 
   it('does nothing for an unknown source name', () => {

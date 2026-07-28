@@ -193,9 +193,10 @@ export function useDockSession({ state, obsConnected, execute }: DockSessionArgs
   // A session from a previous page load resumes immediately — NOT gated on
   // OBS. If OBS takes longer than the server grace period to come back
   // (PC reboot, updates), the session must not die while the dock page is
-  // open: remotes wait on the obs-status flag instead.
+  // open: remotes wait on the obs-status flag instead. Also re-dials after a
+  // remount whose cleanup closed the socket (StrictMode's dev double-mount).
   useEffect(() => {
-    if (storedRef.current && !relayRef.current) startRelay()
+    if ((storedRef.current || createRef.current) && !relayRef.current) startRelay()
   }, [startRelay])
 
   // Tell remotes when OBS itself drops or comes back on this machine
@@ -214,7 +215,16 @@ export function useDockSession({ state, obsConnected, execute }: DockSessionArgs
     relayRef.current?.sendRaw(packed)
   }, [state, status])
 
-  useEffect(() => () => relayRef.current?.close(), [])
+  // Cleanup must also empty the ref: a closed RelayHandle never reconnects,
+  // and leaving it in place made the resume effect above skip its re-dial on
+  // remount — the dock sat on "Starting…" forever in dev (StrictMode).
+  useEffect(
+    () => () => {
+      relayRef.current?.close()
+      relayRef.current = null
+    },
+    [],
+  )
 
   const start = useCallback(
     (sessionName: string, sessionPin: string) => {

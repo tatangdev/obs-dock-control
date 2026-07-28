@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ObsState } from '../../shared/protocol'
-import { mediaRole, parseScene } from './scenes'
+import { mediaRole, parseScene, syncMediaClones } from './scenes'
 import type { ObsCall, ObsQuery, ObsSubscribe } from './useObs'
 import { storageGet, storageSet } from './storage'
 
@@ -95,6 +95,19 @@ export function useMediaBehaviors({ state, obsConnected, call, query, subscribe 
       mediaAction: 'OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART',
     })
   }, [state])
+
+  // The clones are one logical audio channel with the active source, but mix
+  // their own audio — when the deck switches sources (or the dock starts),
+  // repoint them and copy the new source's volume/mute across so splits play
+  // at the loudness the Media fader shows. Also heals clones left muted by an
+  // interrupted cue gate.
+  const syncedActiveRef = useRef<string | null>(null)
+  useEffect(() => {
+    const active = state?.media?.active ?? null
+    if (!obsConnected || active === null || active === syncedActiveRef.current) return
+    syncedActiveRef.current = active
+    void syncMediaClones(query, active)
+  }, [obsConnected, state, query])
 
   // Auto-play is app-driven — keep the OBS-side restart_on_activate off on
   // every video source in the MEDIA scene, so it can't double-trigger or play

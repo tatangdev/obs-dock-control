@@ -82,6 +82,12 @@ function camera(name: string, uuid: string, filterUuid: string, maskSettings: Re
     versioned_id: kind,
     settings: {},
     ...sourceBoilerplate(255, camHotkeys),
+    // Embedded camera audio (HDMI feeds, webcam mics) would be audible only
+    // in the scenes that contain the real source — fullscreen and overlay —
+    // and silent in splits, whose cam clones don't clone audio. The designed
+    // sound path is the dedicated Audio Input, so cameras start muted;
+    // unmute deliberately in the OBS mixer if a camera carries program sound.
+    muted: true,
     filters: [maskFilter(filterUuid, maskSettings)],
   }
 }
@@ -92,9 +98,12 @@ function clone(
   cloneOf: string,
   sameClones: string | null,
   filterUuid: string,
-  maskSettings: Record<string, number>,
+  maskSettings: Record<string, number> | null,
+  audio = false,
 ) {
-  const settings = sameClones ? { clone: cloneOf, same_clones: sameClones } : { clone: cloneOf }
+  const settings: Record<string, unknown> = { clone: cloneOf }
+  if (sameClones) settings['same_clones'] = sameClones
+  if (audio) settings['audio'] = true
   return {
     prev_ver: PREV_VER,
     name,
@@ -103,7 +112,7 @@ function clone(
     versioned_id: 'source-clone',
     settings,
     ...sourceBoilerplate(255, camHotkeys),
-    filters: [maskFilter(filterUuid, maskSettings)],
+    filters: maskSettings ? [maskFilter(filterUuid, maskSettings)] : [],
   }
 }
 
@@ -192,7 +201,7 @@ const U = {
     '328b0bff-0bf6-4015-9c74-74a3d857dcb1',
     'eb641d3a-1796-42a3-b6c1-2cd26387bde6',
   ],
-  media: Array.from({ length: 6 }, (_, i) => uuidFor(`source:Media ${i}`)),
+  media: Array.from({ length: 7 }, (_, i) => uuidFor(`source:Media ${i}`)),
 }
 
 const MASKS: Record<string, (Record<string, number> | null)[]> & { cam0: Record<string, number> } = {
@@ -215,7 +224,8 @@ const MASKS: Record<string, (Record<string, number> | null)[]> & { cam0: Record<
   ],
   // Media plays arbitrary files, fitted via bounds boxes — masks stay
   // full-frame (rounded corners only, never crops that would slice a
-  // letterboxed video)
+  // letterboxed video). Media 6 is the overlay full-frame clone: no mask,
+  // square corners at the screen edge like the fullscreen scenes.
   media: [
     null,
     { rectangle_corner_radius: 66.0, rectangle_width: 1920.0, rectangle_height: 1080.0 },
@@ -223,6 +233,7 @@ const MASKS: Record<string, (Record<string, number> | null)[]> & { cam0: Record<
     { rectangle_corner_radius: 46.0, rectangle_width: 1920.0, rectangle_height: 1080.0 },
     { rectangle_corner_radius: 38.0, rectangle_width: 1920.0, rectangle_height: 1080.0 },
     { rectangle_corner_radius: 134.0, rectangle_width: 1920.0, rectangle_height: 1080.0 },
+    null,
   ],
 } as any
 
@@ -262,7 +273,15 @@ const SAME_CLONES: Record<string, (string | null)[]> = {
     'Second Cam 1\nSecond Cam 3\nSecond Cam 2',
     'Second Cam 1\nSecond Cam 3\nSecond Cam 2\nSecond Cam 4',
   ],
-  media: [null, null, 'Media 1\nMedia 3', 'Media 1', 'Media 1\nMedia 3\nMedia 2', 'Media 1\nMedia 3\nMedia 2\nMedia 4'],
+  media: [
+    null,
+    null,
+    'Media 1\nMedia 3',
+    'Media 1',
+    'Media 1\nMedia 3\nMedia 2',
+    'Media 1\nMedia 3\nMedia 2\nMedia 4',
+    'Media 1\nMedia 3\nMedia 2\nMedia 4\nMedia 5',
+  ],
 }
 
 function camChain(
@@ -273,7 +292,7 @@ function camChain(
   kind: string,
 ) {
   const key = prefix === 'Main Cam' ? 'main' : 'second'
-  const out = [camera(`${prefix} 0`, uuids[0]!, filterUuids[0]!, MASKS.cam0, kind)]
+  const out: Record<string, any>[] = [camera(`${prefix} 0`, uuids[0]!, filterUuids[0]!, MASKS.cam0, kind)]
   for (let i = 1; i <= 5; i++) {
     out.push(clone(`${prefix} ${i}`, uuids[i]!, `${prefix} 0`, SAME_CLONES[key]![i]!, filterUuids[i]!, masks[i]!))
   }
@@ -297,15 +316,18 @@ function mediaChain() {
     hotkeys,
   }
   const out: Record<string, any>[] = [player]
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 1; i <= 6; i++) {
     out.push(
+      // Audio on: clones are video-only by default, which muted media in
+      // every split — sound should follow the media wherever it's visible.
       clone(
         `Media ${i}`,
         U.media[i]!,
         'Media 0',
         SAME_CLONES.media![i]!,
         uuidFor(`filter:Media ${i}`),
-        MASKS.media![i]!,
+        MASKS.media![i] ?? null,
+        true,
       ),
     )
   }
@@ -326,11 +348,14 @@ const BOUNDS_OUTER = 3 // OBS_BOUNDS_SCALE_OUTER — cams fill, overflow cropped
 type Token = 'MAIN' | 'SECOND' | 'MEDIA'
 type Role = 'eq' | 'lgFull' | 'lgNarrow' | 'big' | 'card' | 'full'
 
-// Chains are historically asymmetric: each assigns clone indices to roles
+// Chains are historically asymmetric: each assigns clone indices to roles.
+// Cameras use the real source (index 0) for the overlay full slot; media
+// can't — Media 0 would keep showing its own video regardless of what the
+// deck selects — so its full slot is the Media 6 clone.
 const ROLE_IDX: Record<Token, Record<Role, number>> = {
   MAIN: { eq: 1, lgFull: 2, lgNarrow: 3, big: 4, card: 5, full: 0 },
   SECOND: { eq: 1, lgFull: 3, lgNarrow: 2, big: 5, card: 4, full: 0 },
-  MEDIA: { eq: 1, lgFull: 2, lgNarrow: 3, big: 4, card: 5, full: 0 },
+  MEDIA: { eq: 1, lgFull: 2, lgNarrow: 3, big: 4, card: 5, full: 6 },
 }
 
 const CHAINS: Record<Token, { prefix: string; uuids: string[] }> = {

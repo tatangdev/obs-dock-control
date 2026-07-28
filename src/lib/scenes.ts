@@ -20,9 +20,20 @@ export const MEDIA_SCENE = 'MEDIA'
 /**
  * The Source Clone inputs the split scenes render media through. Whatever
  * source is shown in the MEDIA scene, these must clone the same source or
- * fullscreen and PiP would show different media.
+ * fullscreen and PiP would show different media. Media 6 is the unmasked
+ * full-frame clone the overlay scenes feature.
  */
-export const MEDIA_CLONES = ['Media 1', 'Media 2', 'Media 3', 'Media 4', 'Media 5'] as const
+export const MEDIA_CLONES = ['Media 1', 'Media 2', 'Media 3', 'Media 4', 'Media 5', 'Media 6'] as const
+
+/**
+ * Settings every media clone must carry: pointed at the deck's active source,
+ * with audio cloning on so media sound plays in any layout that shows it —
+ * clones are video-only by default, which left splits silently muted.
+ */
+export const mediaCloneSettings = (activeName: string): Record<string, unknown> => ({
+  clone: activeName,
+  audio: true,
+})
 
 /** Input kinds the transport (play/pause/seek) can drive */
 export const PLAYABLE_KINDS: ReadonlySet<string> = new Set(['ffmpeg_source', 'vlc_source'])
@@ -257,7 +268,7 @@ export function selectMediaSource(send: SendCommand, media: MediaStatus, name: s
     sceneItemTransform: fitTransform(MEDIA_FULL_BOX),
   })
   for (const cloneName of MEDIA_CLONES) {
-    send('SetInputSettings', { inputName: cloneName, inputSettings: { clone: name } })
+    send('SetInputSettings', { inputName: cloneName, inputSettings: mediaCloneSettings(name) })
   }
 }
 
@@ -267,11 +278,77 @@ export function selectMediaSource(send: SendCommand, media: MediaStatus, name: s
  * commands have no rollback) — safe to re-run, missing clones are skipped.
  */
 export async function syncMediaClones(query: Query, activeName: string): Promise<void> {
+  // Clones mix their own audio and ignore the original's fader and mute —
+  // copy the active source's levels too, so every layout plays the media at
+  // the same loudness (and a cue interrupted mid-gate can't strand a clone
+  // muted for the rest of the event).
+  const volume = await query<{ inputVolumeDb: number }>('GetInputVolume', { inputName: activeName }).catch(() => null)
+  const muted = await query<{ inputMuted: boolean }>('GetInputMute', { inputName: activeName }).catch(() => null)
   for (const cloneName of MEDIA_CLONES) {
-    await query('SetInputSettings', { inputName: cloneName, inputSettings: { clone: activeName } }).catch(
+    await query('SetInputSettings', { inputName: cloneName, inputSettings: mediaCloneSettings(activeName) }).catch(
       () => undefined,
     )
+    if (volume) {
+      await query('SetInputVolume', { inputName: cloneName, inputVolumeDb: volume.inputVolumeDb }).catch(
+        () => undefined,
+      )
+    }
+    if (muted) {
+      await query('SetInputMute', { inputName: cloneName, inputMuted: muted.inputMuted }).catch(() => undefined)
+    }
   }
+}
+
+/** The scenes whose full-frame slot must be the Media 6 clone */
+export const OVERLAY_MEDIA_SCENES = ['MEDIA MAIN 4', 'MEDIA SECOND 4'] as const
+const OVERLAY_MEDIA_CLONE = 'Media 6'
+
+/**
+ * Upgrade the overlay scenes' full-frame media slot from the hard-wired
+ * 'Media 0' source to the Media 6 clone. Media 0 keeps showing its own video
+ * regardless of what the deck selects, so collections imported before the
+ * media deck show (and play) the wrong source in overlay mode. Creates the
+ * clone input if missing, slots it at Media 0's stacking position, then
+ * removes the stale item. Safe to re-run.
+ */
+export async function repairOverlaySlots(query: Query, activeName: string): Promise<void> {
+  let cloneExists = await query<{ inputs: { inputName: string }[] }>('GetInputList', {})
+    .then((r) => r.inputs.some((i) => i.inputName === OVERLAY_MEDIA_CLONE))
+    .catch(() => false)
+
+  for (const sceneName of OVERLAY_MEDIA_SCENES) {
+    const list = await query<{
+      sceneItems: { sceneItemId: number; sceneItemIndex: number; sourceName: string }[]
+    }>('GetSceneItemList', { sceneName }).catch(() => null)
+    if (!list) continue
+    const stale = list.sceneItems.find((i) => i.sourceName === 'Media 0')
+    const existing = list.sceneItems.find((i) => i.sourceName === OVERLAY_MEDIA_CLONE)
+
+    if (!existing) {
+      const slot = !cloneExists
+        ? await query<{ sceneItemId: number }>('CreateInput', {
+            sceneName,
+            inputName: OVERLAY_MEDIA_CLONE,
+            inputKind: 'source-clone',
+            inputSettings: mediaCloneSettings(activeName),
+          }).then((r) => r.sceneItemId)
+        : await query<{ sceneItemId: number }>('CreateSceneItem', {
+            sceneName,
+            sourceName: OVERLAY_MEDIA_CLONE,
+          }).then((r) => r.sceneItemId)
+      cloneExists = true
+      await setFitBox(query, sceneName, slot, MEDIA_FULL_BOX)
+      // New items land on top of the stack — drop to the featured layer so
+      // the PiP card and OVERLAY keep rendering above it.
+      await query('SetSceneItemIndex', {
+        sceneName,
+        sceneItemId: slot,
+        sceneItemIndex: stale?.sceneItemIndex ?? 1,
+      }).catch(() => undefined)
+    }
+    if (stale) await query('RemoveSceneItem', { sceneName, sceneItemId: stale.sceneItemId }).catch(() => undefined)
+  }
+  await syncMediaClones(query, activeName)
 }
 
 async function setFitBox(query: Query, sceneName: string, sceneItemId: number, box: MediaBox): Promise<void> {
@@ -360,13 +437,34 @@ export async function alignLayouts(query: Query, scenes: readonly string[]): Pro
   }
 }
 
-// Create missing screen scenes in a live OBS: scene + full-screen image
-// source + the OVERLAY nested on top (so ticker/logo keep working over them).
-// If the image input already exists (e.g. migrated from an overlay layer),
-// it is reused — any image the operator already set is preserved.
+/**
+ * Nest the BACKGROUND scene at the bottom of each given scene. BACKGROUND
+ * carries the Audio Input, so a scene without it goes silent on the sound
+ * input the moment it hits program — dead air on stream.
+ */
+export async function nestBackground(query: Query, sceneNames: readonly string[]): Promise<void> {
+  for (const sceneName of sceneNames) {
+    const { sceneItemId } = await query<{ sceneItemId: number }>('CreateSceneItem', {
+      sceneName,
+      sourceName: BACKGROUND_SCENE,
+      sceneItemEnabled: true,
+    })
+    await query('SetSceneItemIndex', { sceneName, sceneItemId, sceneItemIndex: 0 })
+  }
+}
+
+// Create missing screen scenes in a live OBS: BACKGROUND at the bottom (it
+// carries the Audio Input — without it the sound cuts out on screens), a
+// full-screen image source, and the OVERLAY nested on top (so ticker/logo
+// keep working). If the image input already exists (e.g. migrated from an
+// overlay layer), it is reused — any image the operator already set is
+// preserved.
 export async function createScreenScenes(query: Query, missing: readonly ScreenSpec[]): Promise<void> {
   for (const spec of missing) {
     await query('CreateScene', { sceneName: spec.scene })
+    // Skipped when no BACKGROUND scene exists yet — the background repair
+    // slots it beneath every layout (screens included) once it's created.
+    await nestBackground(query, [spec.scene]).catch(() => undefined)
     let sceneItemId: number
     try {
       ;({ sceneItemId } = await query<{ sceneItemId: number }>('CreateInput', {

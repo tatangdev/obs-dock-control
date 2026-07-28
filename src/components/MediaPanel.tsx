@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { MediaStatus } from '../../shared/protocol'
-import { selectMediaSource } from '../lib/scenes'
+import { MEDIA_CLONES, selectMediaSource } from '../lib/scenes'
 import type { SendCommand } from '../lib/scenes'
 import type { MediaPrefs } from '../lib/useMediaBehaviors'
 
@@ -28,12 +28,14 @@ interface MediaPanelProps {
   prefs?: { value: MediaPrefs; onChange: (patch: Partial<MediaPrefs>) => void }
   /** Media is on the stream right now — playback actions are audience-visible */
   onAir?: boolean
+  /** The media channel is muted by the operator — cue must not unmute it */
+  muted?: boolean
 }
 
 // Transport controls for the media video. Mirrored like everything else: state
 // comes from the dock's snapshots, actions go through `send` (direct on the
 // dock, via the relay on remotes). The file itself is set in OBS on Media 0.
-export default function MediaPanel({ media, send, prefs, onAir = false }: MediaPanelProps) {
+export default function MediaPanel({ media, send, prefs, onAir = false, muted = false }: MediaPanelProps) {
   // Slider stays under local control while scrubbing so 1s state polls don't
   // fight the operator's finger. The ref mirrors the latest value because a
   // quick click fires input+pointerup before state flushes — committing from
@@ -68,10 +70,27 @@ export default function MediaPanel({ media, send, prefs, onAir = false }: MediaP
   const trigger = (action: string): void => send('TriggerMediaInputAction', { inputName, mediaAction: action })
 
   function cue(): void {
-    // restart puts the video at 0:00 playing; the pause right after holds it
-    // there so switching to a MEDIA scene starts clean from the top
+    // An open source rewinds silently in place: pause first (immediate, and
+    // obs-websocket handles requests in order), then move the cursor — no
+    // restart, so not a frame of audio leaks out.
+    if (media.state === 'playing' || media.state === 'paused') {
+      trigger(ACTION.pause)
+      seek(0)
+      return
+    }
+    // A stopped/ended source ignores cursor changes — only restart wakes it,
+    // and restart *plays*. Gate the audio until the pause lands: the source
+    // itself and every clone, because clones mix their own audio and ignore
+    // the original's mute flag.
+    const gated = [inputName, ...MEDIA_CLONES]
+    for (const name of gated) send('SetInputMute', { inputName: name, inputMuted: true })
     trigger(ACTION.restart)
     setTimeout(() => trigger(ACTION.pause), 200)
+    setTimeout(() => {
+      // Leave everything muted if the operator muted the media channel
+      if (muted) return
+      for (const name of gated) send('SetInputMute', { inputName: name, inputMuted: false })
+    }, 600)
   }
 
   function seek(ms: number): void {

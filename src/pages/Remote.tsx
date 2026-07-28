@@ -129,7 +129,16 @@ export default function Remote() {
     if (qCode.length === 6 && qPin.length >= 4) startJoin(qCode, qPin)
   }, [searchParams, setSearchParams, startJoin])
 
-  useEffect(() => () => relayRef.current?.close(), [])
+  // A remount whose cleanup closed the socket (StrictMode's dev double-mount)
+  // must redial with the credentials we already have — the auto-join guard
+  // above only fires once, so without this the remote sat stuck on "Joining…".
+  useEffect(() => {
+    if (!relayRef.current && credsRef.current) startJoin(credsRef.current.code, credsRef.current.pin)
+  }, [startJoin])
+
+  // Close AND empty the ref — a closed RelayHandle never reconnects, so a
+  // remount must not find it and assume the connection is still alive.
+  useEffect(() => () => teardown(), [])
 
   const send = (request: string, params?: Record<string, unknown>): void => {
     relayRef.current?.send({ type: 'command', request, params })

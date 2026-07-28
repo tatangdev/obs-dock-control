@@ -15,6 +15,7 @@ export default function ShareCard({ code, pin }: { code: string; pin: string | n
   const url = joinUrl(code, pin ?? undefined)
   const [copied, setCopied] = useState(false)
   const [pinShown, setPinShown] = useState(false)
+  const [urlShown, setUrlShown] = useState(false)
 
   useEffect(() => {
     if (!copied) return
@@ -28,49 +29,46 @@ export default function ShareCard({ code, pin }: { code: string; pin: string | n
       .then(() => setCopied(true))
       .catch(() => {
         // Clipboard is unavailable in some embedded browsers (the OBS dock) —
-        // select-and-copy from the visible link still works.
+        // fall back to showing the link so select-and-copy still works.
+        setUrlShown(true)
       })
   }
 
   return (
-    <div className="mb-4 animate-fade-in rounded-2xl border border-transparent bg-ios-card px-4 py-4">
-      <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-center sm:gap-4">
-        <div className="shrink-0 rounded-xl bg-white p-3">
-          <QRCodeSVG value={url} size={148} marginSize={0} />
+    <div className="mb-4 animate-fade-in rounded-2xl border border-transparent bg-ios-card px-3 py-3">
+      <div className="flex items-center gap-3 sm:gap-4">
+        <div className="shrink-0 rounded-lg bg-white p-2">
+          <QRCodeSVG value={url} size={104} marginSize={0} />
         </div>
-        <div className="min-w-0 text-center sm:text-left">
-          <div className="text-base sm:text-sm font-semibold text-white">Scan to join</div>
-          <p className="mt-1 text-sm sm:text-xs text-ios-label2">
-            Point the phone camera here — it opens the remote already connected, no code or PIN to type.
-          </p>
-          {pin === null ? (
-            <p className="mt-1 text-sm sm:text-xs text-ios-orange">
-              The PIN isn&apos;t stored for this session, so scanners still type the PIN. Restart the session to embed
-              it.
-            </p>
-          ) : (
-            <p className="mt-1 text-sm sm:text-xs text-ios-label2">
-              Typing instead? Code <span className="font-mono font-semibold text-white">{code}</span> · PIN{' '}
-              <button
-                onClick={() => setPinShown((v) => !v)}
-                title={pinShown ? 'Hide the PIN' : 'Show the PIN'}
-                className="font-mono font-semibold text-ios-blue transition-colors hover:text-ios-blue-light"
-              >
-                {pinShown ? pin : '••••'}
-              </button>
-            </p>
-          )}
-          <div className="mt-2 flex items-center justify-center gap-2 sm:justify-start">
-            <span className="min-w-0 select-all truncate rounded-lg bg-ios-fill px-2 py-1 font-mono text-sm sm:text-xs text-ios-label2">
-              {url}
-            </span>
-            <button
-              onClick={copy}
-              className="shrink-0 text-sm sm:text-xs font-medium text-ios-blue transition-colors hover:text-ios-blue-light"
-            >
-              {copied ? 'Copied' : 'Copy'}
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-white">Scan to join</div>
+          <p className="mt-0.5 text-xs text-ios-label2">Point a phone camera here — the remote opens connected.</p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ios-label2">
+            {pin === null ? (
+              <span className="text-ios-orange">PIN not stored — restart the session to embed it.</span>
+            ) : (
+              <span>
+                Typing instead? PIN{' '}
+                <button
+                  onClick={() => setPinShown((v) => !v)}
+                  title={pinShown ? 'Hide the PIN' : 'Show the PIN'}
+                  className="font-mono font-semibold text-ios-blue transition-colors hover:text-ios-blue-light"
+                >
+                  {pinShown ? pin : '••••'}
+                </button>
+              </span>
+            )}
+            <button onClick={copy} className="font-medium text-ios-blue transition-colors hover:text-ios-blue-light">
+              {copied ? 'Copied' : 'Copy link'}
             </button>
           </div>
+          {urlShown && (
+            <div className="mt-1.5">
+              <span className="block select-all truncate rounded-lg bg-ios-fill px-2 py-1 font-mono text-xs text-ios-label2">
+                {url}
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>
