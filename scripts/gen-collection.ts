@@ -11,7 +11,15 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { BACKGROUND_INPUT, BACKGROUND_SCENE, AUDIO_INPUT, OVERLAY_LAYERS, OVERLAY_SCENE } from '../src/lib/overlay'
 import type { OverlayLayerSpec } from '../src/lib/overlay'
-import { MEDIA_FULL_BOX, NARROW_MASK_WIDTH, SCREENS, SPLIT_BOXES, SUFFIX_TO_STYLE } from '../src/lib/scenes'
+import {
+  MEDIA_AUDIO_BOX,
+  MEDIA_AUDIO_INPUT,
+  MEDIA_FULL_BOX,
+  NARROW_MASK_WIDTH,
+  SCREENS,
+  SPLIT_BOXES,
+  SUFFIX_TO_STYLE,
+} from '../src/lib/scenes'
 import type { MediaBox } from '../src/lib/scenes'
 import { AUDIO_KIND, CAMERA_KIND, PLATFORMS } from '../src/lib/platform'
 
@@ -100,6 +108,7 @@ function clone(
   filterUuid: string,
   maskSettings: Record<string, number> | null,
   audio = false,
+  hideMixer = false,
 ) {
   const settings: Record<string, unknown> = { clone: cloneOf }
   if (sameClones) settings['same_clones'] = sameClones
@@ -112,6 +121,9 @@ function clone(
     versioned_id: 'source-clone',
     settings,
     ...sourceBoilerplate(255, camHotkeys),
+    // Plumbing sources stay out of the Audio Mixer so the only media strip
+    // an operator sees (and can touch) is 'Media Audio'.
+    ...(hideMixer ? { private_settings: { mixer_hidden: true } } : {}),
     filters: maskSettings ? [maskFilter(filterUuid, maskSettings)] : [],
   }
 }
@@ -314,12 +326,18 @@ function mediaChain() {
     settings: { looping: false, restart_on_activate: false, clear_on_media_end: false },
     ...rest,
     hotkeys,
+    // Silent on purpose: 'Media Audio' (which taps this source's audio
+    // before mute) is the single audio path — a direct output here would
+    // double the sound whenever a transition overlaps two media scenes.
+    // Hidden from the mixer too, so nobody "helpfully" unmutes it.
+    muted: true,
+    private_settings: { mixer_hidden: true },
   }
   const out: Record<string, any>[] = [player]
   for (let i = 1; i <= 6; i++) {
+    // Video-only (audio false): slot clones with their own audio double the
+    // soundtrack during transitions between two media layouts.
     out.push(
-      // Audio on: clones are video-only by default, which muted media in
-      // every split — sound should follow the media wherever it's visible.
       clone(
         `Media ${i}`,
         U.media[i]!,
@@ -327,10 +345,24 @@ function mediaChain() {
         SAME_CLONES.media![i]!,
         uuidFor(`filter:Media ${i}`),
         MASKS.media![i] ?? null,
+        false,
         true,
       ),
     )
   }
+  // The one audible media source: an audio-cloning copy that sits off-screen
+  // in every media scene, so transitions keep it running seamlessly.
+  out.push(
+    clone(
+      MEDIA_AUDIO_INPUT,
+      uuidFor(`source:${MEDIA_AUDIO_INPUT}`),
+      'Media 0',
+      null,
+      uuidFor(`filter:${MEDIA_AUDIO_INPUT}`),
+      null,
+      true,
+    ),
+  )
   return out
 }
 
@@ -391,14 +423,20 @@ function slotItem(token: Token, role: Role, box: MediaBox, id: number) {
   )
 }
 
+// The audio clone rides (enabled, off-screen) in every scene that shows
+// media — being the same source on both sides of a transition is what keeps
+// the sound seamless instead of doubled.
+const mediaAudioItem = (id: number): Record<string, any> =>
+  boundsItem(MEDIA_AUDIO_INPUT, uuidFor(`source:${MEDIA_AUDIO_INPUT}`), id, MEDIA_AUDIO_BOX, BOUNDS_INNER)
+
 function comboScene(featured: Token, secondary: Token, suffix: string, uuid?: string) {
   const name = `${featured} ${secondary}${suffix}`
   const [boxA, boxB] = SPLIT_BOXES[SUFFIX_TO_STYLE[suffix.trim()]!]
   const [roleA, roleB] = ROLE_FOR[suffix]!
-  return scene(name, uuid ?? uuidFor(`scene:${name}`), 2, [
-    slotItem(featured, roleA, boxA, 1),
-    slotItem(secondary, roleB, boxB, 2),
-  ])
+  const items = [slotItem(featured, roleA, boxA, 1), slotItem(secondary, roleB, boxB, 2)]
+  const hasMedia = featured === 'MEDIA' || secondary === 'MEDIA'
+  if (hasMedia) items.push(mediaAudioItem(3))
+  return scene(name, uuid ?? uuidFor(`scene:${name}`), hasMedia ? 3 : 2, items)
 }
 
 const mc = (i: number): string => U.mainCam[i]!
@@ -427,7 +465,10 @@ function buildCollection(cameraKind: string, audioKind: string): Record<string, 
   ]
 
   const mediaScenes = [
-    scene('MEDIA', uuidFor('scene:MEDIA'), 1, [boundsItem('Media 0', U.media[0]!, 1, MEDIA_FULL_BOX, BOUNDS_INNER)]),
+    scene('MEDIA', uuidFor('scene:MEDIA'), 2, [
+      boundsItem('Media 0', U.media[0]!, 1, MEDIA_FULL_BOX, BOUNDS_INNER),
+      mediaAudioItem(2),
+    ]),
   ]
   for (const suffix of ['', ' 2', ' 3', ' 4']) {
     for (const [f, s] of [

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AudioTrack, ObsState } from '../../shared/protocol'
-import { CANVAS, MEDIA_CLONES, SOURCES, SPLIT_BOXES, mediaRole, parseScene, sceneFor } from '../lib/scenes'
+import { CANVAS, MEDIA_AUDIO_INPUT, SOURCES, SPLIT_BOXES, mediaRole, parseScene, sceneFor } from '../lib/scenes'
 import type { MediaBox, SendCommand, SourceKey, SplitKey } from '../lib/scenes'
 import type { ObsWatchMeters } from '../lib/useObs'
 import { AUDIO_INPUT } from '../lib/overlay'
@@ -346,13 +346,7 @@ export default function ControlPanel({ state, send, mediaPrefs, watchMeters }: C
               />
             )}
             {state.audio.media && state.media?.active && (
-              <AudioRow
-                label="Media"
-                inputName={state.media.active}
-                track={state.audio.media}
-                send={send}
-                linkedInputs={MEDIA_CLONES}
-              />
+              <AudioRow label="Media" inputName={MEDIA_AUDIO_INPUT} track={state.audio.media} send={send} />
             )}
           </div>
         </section>
@@ -365,6 +359,7 @@ export default function ControlPanel({ state, send, mediaPrefs, watchMeters }: C
           prefs={mediaPrefs}
           onAir={mediaOnAir}
           muted={state.audio.media?.muted ?? false}
+          audioUnified={state.audio.media !== null}
         />
       )}
 
@@ -580,16 +575,12 @@ function AudioRow({
   track,
   send,
   watchMeters,
-  linkedInputs = [],
 }: {
   label: string
   inputName: string
   track: AudioTrack
   send: SendCommand
   watchMeters?: ObsWatchMeters
-  /** Inputs that must mirror every volume/mute change (the media clones each
-   * mix their own audio and ignore the original's mute, so one row drives all) */
-  linkedInputs?: readonly string[]
 }) {
   const [drag, setDrag] = useState<number | null>(null)
   const dragRef = useRef<number | null>(null)
@@ -599,24 +590,17 @@ function AudioRow({
 
   useEffect(() => (watchMeters ? watchMeters(inputName, setPeakDb) : undefined), [watchMeters, inputName])
 
-  const setVolume = (v: number): void => {
-    for (const name of [inputName, ...linkedInputs]) send('SetInputVolume', { inputName: name, inputVolumeDb: v })
-  }
-  const setMuted = (m: boolean): void => {
-    for (const name of [inputName, ...linkedInputs]) send('SetInputMute', { inputName: name, inputMuted: m })
-  }
-
   const commit = (): void => {
     const v = dragRef.current
     dragRef.current = null
     setDrag(null)
-    if (v !== null) setVolume(v)
+    if (v !== null) send('SetInputVolume', { inputName, inputVolumeDb: v })
   }
 
   return (
     <div className="flex items-center gap-3 rounded-2xl bg-ios-card px-3 py-2.5">
       <button
-        onClick={() => setMuted(!track.muted)}
+        onClick={() => send('SetInputMute', { inputName, inputMuted: !track.muted })}
         title={track.muted ? `Unmute ${label}` : `Mute ${label}`}
         className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors duration-200 ease-out ${
           track.muted ? 'bg-ios-red/20 text-ios-red' : 'bg-ios-fill text-ios-label2 hover:bg-ios-fill2'
@@ -654,7 +638,7 @@ function AudioRow({
             const now = performance.now()
             if (now - lastSent.current > 80) {
               lastSent.current = now
-              setVolume(v)
+              send('SetInputVolume', { inputName, inputVolumeDb: v })
             }
           }}
           onPointerUp={commit}

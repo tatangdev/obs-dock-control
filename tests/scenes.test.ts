@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   GRID_MARGIN,
+  MEDIA_AUDIO_INPUT,
   MEDIA_CLONES,
   NARROW_MASK_WIDTH,
   SCREENS,
@@ -139,7 +140,13 @@ describe('selectMediaSource', () => {
 
   it('shows the target, hides the rest, fits it, and repoints every clone', () => {
     const { calls, send } = record()
-    selectMediaSource(send, media, 'Video B')
+    selectMediaSource(send, media, 'Video B', true)
+
+    // On a unified collection the chosen source is muted immediately — the
+    // 'Media Audio' clone is the only audible path.
+    expect(calls.filter((c) => c.request === 'SetInputMute')).toEqual([
+      { request: 'SetInputMute', params: { inputName: 'Video B', inputMuted: true } },
+    ])
 
     const enables = calls.filter((c) => c.request === 'SetSceneItemEnabled')
     expect(enables).toEqual([
@@ -151,9 +158,13 @@ describe('selectMediaSource', () => {
     expect(transform?.params).toMatchObject({ sceneName: 'MEDIA', sceneItemId: 7 })
 
     const repoints = calls.filter((c) => c.request === 'SetInputSettings')
-    expect(repoints.map((c) => c.params?.['inputName'])).toEqual([...MEDIA_CLONES])
-    // audio: true — clones are video-only by default, which muted split layouts
-    for (const c of repoints) expect(c.params?.['inputSettings']).toEqual({ clone: 'Video B', audio: true })
+    expect(repoints.map((c) => c.params?.['inputName'])).toEqual([...MEDIA_CLONES, MEDIA_AUDIO_INPUT])
+    // Slot clones stay video-only; 'Media Audio' is the single audio path —
+    // audio on a slot clone would double the sound during transitions.
+    for (const c of repoints) {
+      const isAudioClone = c.params?.['inputName'] === MEDIA_AUDIO_INPUT
+      expect(c.params?.['inputSettings']).toEqual({ clone: 'Video B', audio: isAudioClone })
+    }
   })
 
   it('does nothing for an unknown source name', () => {
@@ -167,6 +178,6 @@ describe('selectMediaSource', () => {
     selectMediaSource(send, media, 'Media 0')
     // already visible / already hidden — no enable calls, but fit + clones still run
     expect(calls.filter((c) => c.request === 'SetSceneItemEnabled')).toEqual([])
-    expect(calls.filter((c) => c.request === 'SetInputSettings')).toHaveLength(MEDIA_CLONES.length)
+    expect(calls.filter((c) => c.request === 'SetInputSettings')).toHaveLength(MEDIA_CLONES.length + 1)
   })
 })

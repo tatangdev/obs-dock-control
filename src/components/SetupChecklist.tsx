@@ -3,6 +3,7 @@ import type { OBSEventTypes } from 'obs-websocket-js'
 import type { LayerInfo, MediaStatus } from '../../shared/protocol'
 import type { ObsQuery, ObsSubscribe } from '../lib/useObs'
 import {
+  MEDIA_AUDIO_INPUT,
   MEDIA_CLONES,
   OVERLAY_MEDIA_SCENES,
   SCREENS,
@@ -10,10 +11,12 @@ import {
   SPLIT_BOXES,
   alignLayouts,
   isSetupReady,
+  mediaAudioScenes,
   nestBackground,
   parseScene,
   repairOverlaySlots,
   syncMediaClones,
+  unifyMediaAudio,
 } from '../lib/scenes'
 import {
   BACKGROUND_INPUT,
@@ -48,10 +51,8 @@ const WATCH_EVENTS: readonly (keyof OBSEventTypes)[] = [
   'CurrentSceneCollectionChanged',
   'SceneListChanged',
   'SceneItemEnableStateChanged',
-  // levels feed the media-clone loudness drift check (debounced, so a fader
-  // drag collapses into one re-run)
-  'InputVolumeChanged',
-  'InputMuteStateChanged',
+  // "Monitor Only" on the media audio channel silently drops it from the stream
+  'InputAudioMonitorTypeChanged',
   // emitted by obs-websocket >= 5.4; missing from the 5.0 typings
   'InputSettingsChanged' as keyof OBSEventTypes,
 ]
@@ -69,32 +70,42 @@ async function inputExists(query: ObsQuery, inputName: string): Promise<boolean>
 }
 
 // Split slots render clones — each must point at the source the MEDIA scene
-// shows (or fullscreen and PiP show different media), carry audio, and match
-// the active source's volume/mute (clones mix their own audio, so the Media
-// fader's fan-out or an interrupted cue gate can leave them drifted).
+// shows (or fullscreen and PiP show different media) and stay video-only:
+// an audio flag left on a slot clone brings back the doubled soundtrack
+// during transitions. The 'Media Audio' clone is the one audio path and must
+// point at the active source with audio on.
 async function mediaCloneDriftProbe(query: ObsQuery, active: string): Promise<boolean> {
-  const volume = await query<{ inputVolumeDb: number }>('GetInputVolume', { inputName: active }).catch(() => null)
-  const muted = await query<{ inputMuted: boolean }>('GetInputMute', { inputName: active }).catch(() => null)
-  for (const clone of MEDIA_CLONES) {
+  for (const clone of [...MEDIA_CLONES, MEDIA_AUDIO_INPUT]) {
     const settings = await query<{ inputSettings: Record<string, unknown> }>('GetInputSettings', {
       inputName: clone,
     })
       .then((r) => r.inputSettings)
       .catch(() => null)
-    if (settings === null) continue // clone missing — the overlay-slot repair owns that
+    if (settings === null) continue // clone missing — the structural repairs own that
     const target = String(settings['clone'] ?? '')
     if (target === '') continue // never configured — nothing to compare against
-    if (target !== active || settings['audio'] !== true) return true
-    if (muted) {
-      const m = await query<{ inputMuted: boolean }>('GetInputMute', { inputName: clone }).catch(() => null)
-      if (m !== null && m.inputMuted !== muted.inputMuted) return true
-    }
-    if (volume) {
-      const v = await query<{ inputVolumeDb: number }>('GetInputVolume', { inputName: clone }).catch(() => null)
-      if (v !== null && Math.abs(v.inputVolumeDb - volume.inputVolumeDb) > 0.5) return true
-    }
+    const wantAudio = clone === MEDIA_AUDIO_INPUT
+    if (target !== active || (settings['audio'] === true) !== wantAudio) return true
   }
   return false
+}
+
+// The 'Media Audio' clone must sit (enabled) in the MEDIA scene and every
+// media split scene — it is the single media audio path; scenes without it
+// go silent, and collections without it double the sound on transitions.
+// Returns the scenes missing it (all of them when the input doesn't exist).
+async function mediaAudioGapsProbe(query: ObsQuery, scenes: readonly string[]): Promise<string[]> {
+  const wanted = mediaAudioScenes(scenes)
+  const gaps = await Promise.all(
+    wanted.map((sceneName) =>
+      query<{ sceneItems: { sourceName: string; sceneItemEnabled: boolean }[] }>('GetSceneItemList', { sceneName })
+        .then((r): string | null =>
+          r.sceneItems.some((i) => i.sourceName === MEDIA_AUDIO_INPUT && i.sceneItemEnabled) ? null : sceneName,
+        )
+        .catch((): string | null => null),
+    ),
+  )
+  return gaps.filter((n): n is string => n !== null)
 }
 
 // Screen scenes must nest BACKGROUND — it carries the Audio Input, so a
@@ -262,7 +273,10 @@ export default function SetupChecklist({
         }>('GetSceneItemList', { sceneName: 'MEDIA' })
           .then((r) => {
             const candidates = r.sceneItems.filter(
-              (i) => i.sourceName !== OVERLAY_SCENE && i.sourceName !== BACKGROUND_SCENE,
+              (i) =>
+                i.sourceName !== OVERLAY_SCENE &&
+                i.sourceName !== BACKGROUND_SCENE &&
+                i.sourceName !== MEDIA_AUDIO_INPUT,
             )
             const t = (candidates.find((i) => i.sourceName === 'Media 0') ?? candidates[0])?.sceneItemTransform
             if (!t) return null
@@ -285,6 +299,14 @@ export default function SetupChecklist({
           .catch(() => null),
       ]).then((probes) => probes.some((p) => p === true)),
       mediaCloneDrift: mediaActive === null ? Promise.resolve(false) : mediaCloneDriftProbe(query, mediaActive),
+      mediaAudioGaps: mediaAudioGapsProbe(query, scenes),
+      // "Monitor Only (mute output)" plays the media locally but removes it
+      // from the stream — invisible in the mixer, catastrophic on air.
+      mediaAudioMonitorOnly: query<{ monitorType: string }>('GetInputAudioMonitorType', {
+        inputName: MEDIA_AUDIO_INPUT,
+      })
+        .then((r) => r.monitorType === 'OBS_MONITORING_TYPE_MONITOR_ONLY')
+        .catch(() => false),
       // Screens without the BACKGROUND nest lose the Audio Input the moment
       // they hit program — dead air. Generated collections nest it; screens
       // created by an older dock repair did not.
@@ -483,6 +505,51 @@ export default function SetupChecklist({
       })
     }
 
+    if (c.mediaAudioGaps.length > 0) {
+      found.push({
+        key: 'media-audio',
+        label: 'Media sound needs unifying',
+        problem: 'Changing between media layouts doubles the sound for the transition duration (volume jump).',
+        fix: {
+          label: 'Unify media audio',
+          run: () => unifyMediaAudio(query, mediaActive ?? 'Media 0', scenes),
+        },
+        guide: {
+          title: 'One audio path for media',
+          steps: [
+            'Media sound should come from a single hidden "Media Audio" source present in every media layout — OBS then keeps it running seamlessly across transitions.',
+            'Press "Unify media audio" — the dock creates it, carries your current media volume over, mutes the direct sources (the clone still hears them), and makes the slot clones video-only.',
+            'After this, the Media fader on the dock controls that one channel everywhere.',
+          ],
+        },
+      })
+    }
+
+    if (c.mediaAudioMonitorOnly === true) {
+      found.push({
+        key: 'media-audio-monitor',
+        label: 'Media sound not reaching the stream',
+        problem: '"Media Audio" is set to Monitor Only — you hear it locally, but the stream gets silence.',
+        fix: {
+          label: 'Restore stream audio',
+          run: async () => {
+            await query('SetInputAudioMonitorType', {
+              inputName: MEDIA_AUDIO_INPUT,
+              monitorType: 'OBS_MONITORING_TYPE_MONITOR_AND_OUTPUT',
+            })
+          },
+        },
+        guide: {
+          title: 'Send the media audio to the stream again',
+          steps: [
+            'In OBS the "Media Audio" source is set to "Monitor Only (mute output)" — local speakers get it, the stream does not.',
+            'Press "Restore stream audio" — monitoring switches to "Monitor and Output", keeping your local playback and restoring the stream feed.',
+            'To stop hearing it locally, set Advanced Audio Properties → Media Audio → Audio Monitoring → Monitor Off.',
+          ],
+        },
+      })
+    }
+
     if (c.overlaySlotStale === true) {
       found.push({
         key: 'overlay-media-slot',
@@ -524,12 +591,16 @@ export default function SetupChecklist({
       })
     }
 
-    if (c.overlaySlotStale !== true && c.mediaCloneDrift === true && mediaActive !== null) {
+    if (
+      c.overlaySlotStale !== true &&
+      c.mediaAudioGaps.length === 0 &&
+      c.mediaCloneDrift === true &&
+      mediaActive !== null
+    ) {
       found.push({
         key: 'media-clones',
         label: 'Media slots out of sync',
-        problem:
-          'Split layouts would show a different media source than fullscreen, or play its sound wrong (muted or at another level).',
+        problem: 'Split layouts would show a different media source than fullscreen, or transitions double the sound.',
         fix: {
           label: 'Sync media slots',
           run: () => syncMediaClones(query, mediaActive),
@@ -537,8 +608,8 @@ export default function SetupChecklist({
         guide: {
           title: 'Sync the media slots',
           steps: [
-            'The split layouts show media through clone sources (Media 1–6).',
-            `They must point at the source the MEDIA scene shows ("${mediaActive}") and pass its audio through.`,
+            'The split layouts show media through video-only clones (Media 1–6), and "Media Audio" carries the sound.',
+            `They must all point at the source the MEDIA scene shows ("${mediaActive}").`,
             'Press "Sync media slots" to repoint them all — or pick the source again in the Media panel.',
           ],
         },

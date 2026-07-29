@@ -18,19 +18,37 @@ import type { MediaStatus } from '../../shared/protocol'
 export const MEDIA_SCENE = 'MEDIA'
 
 /**
- * The Source Clone inputs the split scenes render media through. Whatever
- * source is shown in the MEDIA scene, these must clone the same source or
- * fullscreen and PiP would show different media. Media 6 is the unmasked
- * full-frame clone the overlay scenes feature.
+ * The Source Clone inputs the split scenes render media through — strictly
+ * video-only: if the slot clones carried audio, a transition between two
+ * media layouts would run two copies of the same soundtrack at once (OBS
+ * keeps both scenes' sources live for the whole transition) and the volume
+ * would jump up then drop. Media 6 is the unmasked full-frame clone the
+ * overlay scenes feature.
  */
 export const MEDIA_CLONES = ['Media 1', 'Media 2', 'Media 3', 'Media 4', 'Media 5', 'Media 6'] as const
 
 /**
- * Settings every media clone must carry: pointed at the deck's active source,
- * with audio cloning on so media sound plays in any layout that shows it —
- * clones are video-only by default, which left splits silently muted.
+ * The single media audio path: one audio-only clone that sits (off-screen,
+ * 1px) in the MEDIA scene and every media split scene. Because it is the
+ * same source on both sides of any media↔media transition, OBS keeps it
+ * running seamlessly — no doubling, not even a dip. It taps the deck source
+ * *before* mute, so the deck sources themselves stay muted and emit nothing
+ * directly. The Media fader/mute and the cue gate target only this input.
  */
+export const MEDIA_AUDIO_INPUT = 'Media Audio'
+
+/** Where the audio clone's scene item parks: far off-canvas and 1px, so no
+ * transition style (fade, slide, move) can ever bring it into view. */
+export const MEDIA_AUDIO_BOX: MediaBox = { x: 5000, y: 5000, w: 1, h: 1 }
+
+/** Video slot clones: pointed at the deck's active source, never audio */
 export const mediaCloneSettings = (activeName: string): Record<string, unknown> => ({
+  clone: activeName,
+  audio: false,
+})
+
+/** The audio clone: same target, audio cloning on */
+export const mediaAudioSettings = (activeName: string): Record<string, unknown> => ({
   clone: activeName,
   audio: true,
 })
@@ -251,9 +269,13 @@ export function coverTransform(box: MediaBox): Record<string, unknown> {
  * split-scene clones at it so every layout shows the same media. Fire-and-
  * forget: works with the dock's direct call and the remote's relayed send.
  */
-export function selectMediaSource(send: SendCommand, media: MediaStatus, name: string): void {
+export function selectMediaSource(send: SendCommand, media: MediaStatus, name: string, muteTarget = false): void {
   const target = media.sources.find((s) => s.name === name)
   if (!target) return
+  // Close the gap before the dock's normalizer catches up: on a unified
+  // collection the chosen source must be muted the moment it goes visible,
+  // or it briefly doubles with the 'Media Audio' clone.
+  if (muteTarget) send('SetInputMute', { inputName: name, inputMuted: true })
   for (const s of media.sources) {
     const show = s.name === name
     if (s.visible !== show) {
@@ -270,6 +292,7 @@ export function selectMediaSource(send: SendCommand, media: MediaStatus, name: s
   for (const cloneName of MEDIA_CLONES) {
     send('SetInputSettings', { inputName: cloneName, inputSettings: mediaCloneSettings(name) })
   }
+  send('SetInputSettings', { inputName: MEDIA_AUDIO_INPUT, inputSettings: mediaAudioSettings(name) })
 }
 
 /**
@@ -278,25 +301,14 @@ export function selectMediaSource(send: SendCommand, media: MediaStatus, name: s
  * commands have no rollback) — safe to re-run, missing clones are skipped.
  */
 export async function syncMediaClones(query: Query, activeName: string): Promise<void> {
-  // Clones mix their own audio and ignore the original's fader and mute —
-  // copy the active source's levels too, so every layout plays the media at
-  // the same loudness (and a cue interrupted mid-gate can't strand a clone
-  // muted for the rest of the event).
-  const volume = await query<{ inputVolumeDb: number }>('GetInputVolume', { inputName: activeName }).catch(() => null)
-  const muted = await query<{ inputMuted: boolean }>('GetInputMute', { inputName: activeName }).catch(() => null)
   for (const cloneName of MEDIA_CLONES) {
     await query('SetInputSettings', { inputName: cloneName, inputSettings: mediaCloneSettings(activeName) }).catch(
       () => undefined,
     )
-    if (volume) {
-      await query('SetInputVolume', { inputName: cloneName, inputVolumeDb: volume.inputVolumeDb }).catch(
-        () => undefined,
-      )
-    }
-    if (muted) {
-      await query('SetInputMute', { inputName: cloneName, inputMuted: muted.inputMuted }).catch(() => undefined)
-    }
   }
+  await query('SetInputSettings', { inputName: MEDIA_AUDIO_INPUT, inputSettings: mediaAudioSettings(activeName) }).catch(
+    () => undefined,
+  )
 }
 
 /** The scenes whose full-frame slot must be the Media 6 clone */
@@ -351,12 +363,97 @@ export async function repairOverlaySlots(query: Query, activeName: string): Prom
   await syncMediaClones(query, activeName)
 }
 
+/** Every scene that shows media and therefore must carry the audio clone */
+export function mediaAudioScenes(scenes: readonly string[]): string[] {
+  return scenes.filter((name) => {
+    if (name === MEDIA_SCENE) return true
+    const sel = parseScene(name)
+    return sel?.mode === 'split' && (sel.featured === 'media' || sel.secondary === 'media')
+  })
+}
+
+/**
+ * Migrate a live collection to the single-audio-path design: create the
+ * 'Media Audio' clone, park it (off-screen, enabled) in the MEDIA scene and
+ * every media split scene, carry the operator's current media level over to
+ * it, then silence every direct path — deck sources muted (the clone taps
+ * their audio before mute), slot clones back to video-only. Without this,
+ * every transition between two media layouts doubles the soundtrack for the
+ * transition duration. Safe to re-run; fills whatever is missing.
+ */
+export async function unifyMediaAudio(query: Query, activeName: string, scenes: readonly string[]): Promise<void> {
+  let exists = await query<{ inputs: { inputName: string }[] }>('GetInputList', {})
+    .then((r) => r.inputs.some((i) => i.inputName === MEDIA_AUDIO_INPUT))
+    .catch(() => false)
+
+  for (const sceneName of mediaAudioScenes(scenes)) {
+    const list = await query<{
+      sceneItems: { sceneItemId: number; sceneItemEnabled: boolean; sourceName: string }[]
+    }>('GetSceneItemList', { sceneName }).catch(() => null)
+    if (!list) continue
+    const existing = list.sceneItems.find((i) => i.sourceName === MEDIA_AUDIO_INPUT)
+    if (existing) {
+      // The item must stay enabled — a disabled item deactivates the source
+      // and the media goes silent everywhere.
+      if (!existing.sceneItemEnabled) {
+        await query('SetSceneItemEnabled', {
+          sceneName,
+          sceneItemId: existing.sceneItemId,
+          sceneItemEnabled: true,
+        }).catch(() => undefined)
+      }
+      continue
+    }
+    const sceneItemId = !exists
+      ? await query<{ sceneItemId: number }>('CreateInput', {
+          sceneName,
+          inputName: MEDIA_AUDIO_INPUT,
+          inputKind: 'source-clone',
+          inputSettings: mediaAudioSettings(activeName),
+        }).then((r) => r.sceneItemId)
+      : await query<{ sceneItemId: number }>('CreateSceneItem', {
+          sceneName,
+          sourceName: MEDIA_AUDIO_INPUT,
+        }).then((r) => r.sceneItemId)
+    exists = true
+    await setFitBox(query, sceneName, sceneItemId, MEDIA_AUDIO_BOX).catch(() => undefined)
+  }
+
+  // The operator's media level lived on the active source until now — move
+  // it (volume only: the unified channel starts unmuted) onto the one fader.
+  const volume = await query<{ inputVolumeDb: number }>('GetInputVolume', { inputName: activeName }).catch(() => null)
+  if (volume) {
+    await query('SetInputVolume', { inputName: MEDIA_AUDIO_INPUT, inputVolumeDb: volume.inputVolumeDb }).catch(
+      () => undefined,
+    )
+  }
+  await query('SetInputMute', { inputName: MEDIA_AUDIO_INPUT, inputMuted: false }).catch(() => undefined)
+
+  // Silence the direct paths: every deck source in the MEDIA scene (the
+  // audio clone still hears them — it taps audio before mute), and the slot
+  // clones back to video-only via the sync below. All input kinds attempted:
+  // browser sources and captures carry audio too; audio-less kinds reject
+  // the call harmlessly. Nested scenes (null inputKind) can't be muted.
+  const deck = await query<{ sceneItems: { sourceName: string; inputKind: string | null }[] }>('GetSceneItemList', {
+    sceneName: MEDIA_SCENE,
+  }).catch(() => null)
+  for (const item of deck?.sceneItems ?? []) {
+    const name = item.sourceName
+    if (name === OVERLAY_SCENE || name === BACKGROUND_SCENE || name === MEDIA_AUDIO_INPUT) continue
+    if (!item.inputKind) continue
+    await query('SetInputMute', { inputName: name, inputMuted: true }).catch(() => undefined)
+  }
+  await syncMediaClones(query, activeName)
+}
+
 async function setFitBox(query: Query, sceneName: string, sceneItemId: number, box: MediaBox): Promise<void> {
   await query('SetSceneItemTransform', { sceneName, sceneItemId, sceneItemTransform: fitTransform(box) })
 }
 
 /** Which slot's box an item occupies in the given selection, if any */
 function slotBoxFor(sel: Selection, sourceName: string): { box: MediaBox; kind: 'cam' | 'media' } | null {
+  // The audio clone is parked off-screen on purpose — never slot-place it
+  if (sourceName === MEDIA_AUDIO_INPUT) return null
   const token: SourceKey | null = sourceName.startsWith('Main Cam')
     ? 'main'
     : sourceName.startsWith('Second Cam')
@@ -409,8 +506,12 @@ export async function alignLayouts(query: Query, scenes: readonly string[]): Pro
     for (const item of sceneItems) {
       const sourceName = String(item.sourceName)
       // The MEDIA scene holds arbitrary operator-added sources — fit them all
+      // (except the infra nests and the off-screen audio clone)
       const slot =
-        sceneName === MEDIA_SCENE && sourceName !== OVERLAY_SCENE && sourceName !== BACKGROUND_SCENE
+        sceneName === MEDIA_SCENE &&
+        sourceName !== OVERLAY_SCENE &&
+        sourceName !== BACKGROUND_SCENE &&
+        sourceName !== MEDIA_AUDIO_INPUT
           ? ({ box: MEDIA_FULL_BOX, kind: 'media' } as const)
           : slotBoxFor(sel, sourceName)
       if (!slot) continue

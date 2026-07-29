@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { MediaStatus } from '../../shared/protocol'
-import { MEDIA_CLONES, selectMediaSource } from '../lib/scenes'
+import { MEDIA_AUDIO_INPUT, selectMediaSource } from '../lib/scenes'
 import type { SendCommand } from '../lib/scenes'
 import type { MediaPrefs } from '../lib/useMediaBehaviors'
 
@@ -30,12 +30,21 @@ interface MediaPanelProps {
   onAir?: boolean
   /** The media channel is muted by the operator — cue must not unmute it */
   muted?: boolean
+  /** The single-audio-path migration ran — deck sources must stay muted */
+  audioUnified?: boolean
 }
 
 // Transport controls for the media video. Mirrored like everything else: state
 // comes from the dock's snapshots, actions go through `send` (direct on the
 // dock, via the relay on remotes). The file itself is set in OBS on Media 0.
-export default function MediaPanel({ media, send, prefs, onAir = false, muted = false }: MediaPanelProps) {
+export default function MediaPanel({
+  media,
+  send,
+  prefs,
+  onAir = false,
+  muted = false,
+  audioUnified = false,
+}: MediaPanelProps) {
   // Slider stays under local control while scrubbing so 1s state polls don't
   // fight the operator's finger. The ref mirrors the latest value because a
   // quick click fires input+pointerup before state flushes — committing from
@@ -69,28 +78,58 @@ export default function MediaPanel({ media, send, prefs, onAir = false, muted = 
 
   const trigger = (action: string): void => send('TriggerMediaInputAction', { inputName, mediaAction: action })
 
+  // OBS drops media actions on a finished source often enough to matter live:
+  // the demuxer sits at EOF, the source may be inactive (auto-return switched
+  // away), and a cue's pause can race the 'opening' state. Fire-and-forget is
+  // not enough — verify against the mirrored state and retry a couple times.
+  const mediaRef = useRef(media)
+  mediaRef.current = media
+  const verifyTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cancelVerify = (): void => {
+    if (verifyTimer.current) clearTimeout(verifyTimer.current)
+    verifyTimer.current = null
+  }
+  useEffect(() => cancelVerify, [])
+
+  /**
+   * Wake a closed (ended/stopped) source and make it stick: restart —
+   * playing from 0:00, or held paused at `targetMs` (cued) with the single
+   * audio path gated so the brief playing moment stays silent.
+   */
+  function wake(opts: { cued: boolean; targetMs?: number }, attempt = 0): void {
+    cancelVerify()
+    const gate = opts.cued && !muted
+    if (gate) send('SetInputMute', { inputName: MEDIA_AUDIO_INPUT, inputMuted: true })
+    trigger(ACTION.restart)
+    if (opts.cued) {
+      setTimeout(() => {
+        trigger(ACTION.pause)
+        if (opts.targetMs) seek(opts.targetMs)
+      }, 200)
+      if (gate) setTimeout(() => send('SetInputMute', { inputName: MEDIA_AUDIO_INPUT, inputMuted: false }), 600)
+    }
+    if (attempt >= 2) return
+    verifyTimer.current = setTimeout(() => {
+      const m = mediaRef.current
+      const target = opts.targetMs ?? 0
+      const took = opts.cued ? m.state === 'paused' && Math.abs(m.cursorMs - target) < 3000 : m.state === 'playing'
+      if (!took) wake(opts, attempt + 1)
+    }, 900)
+  }
+
   function cue(): void {
+    setPendingSeek(0) // show 0:00 immediately instead of after the next poll
     // An open source rewinds silently in place: pause first (immediate, and
     // obs-websocket handles requests in order), then move the cursor — no
     // restart, so not a frame of audio leaks out.
     if (media.state === 'playing' || media.state === 'paused') {
+      cancelVerify()
       trigger(ACTION.pause)
       seek(0)
       return
     }
-    // A stopped/ended source ignores cursor changes — only restart wakes it,
-    // and restart *plays*. Gate the audio until the pause lands: the source
-    // itself and every clone, because clones mix their own audio and ignore
-    // the original's mute flag.
-    const gated = [inputName, ...MEDIA_CLONES]
-    for (const name of gated) send('SetInputMute', { inputName: name, inputMuted: true })
-    trigger(ACTION.restart)
-    setTimeout(() => trigger(ACTION.pause), 200)
-    setTimeout(() => {
-      // Leave everything muted if the operator muted the media channel
-      if (muted) return
-      for (const name of gated) send('SetInputMute', { inputName: name, inputMuted: false })
-    }, 600)
+    // A stopped/ended source ignores cursor changes — only restart wakes it
+    wake({ cued: true })
   }
 
   function seek(ms: number): void {
@@ -105,9 +144,9 @@ export default function MediaPanel({ media, send, prefs, onAir = false, muted = 
     setPendingSeek(target)
     if (media.state === 'ended' || media.state === 'stopped') {
       // OBS only honors cursor changes while playing or paused — wake the
-      // source first, then jump to the target.
-      trigger(ACTION.restart)
-      setTimeout(() => seek(target), 250)
+      // source, silently, and hold it paused at the target: repositioning a
+      // finished video is preparation, not playback.
+      wake({ cued: true, targetMs: target })
     } else {
       seek(target)
     }
@@ -135,7 +174,7 @@ export default function MediaPanel({ media, send, prefs, onAir = false, muted = 
               return (
                 <button
                   key={s.id}
-                  onClick={() => selectMediaSource(send, media, s.name)}
+                  onClick={() => selectMediaSource(send, media, s.name, audioUnified)}
                   title={active ? `${s.name} is shown in the media slots` : `Show ${s.name} in the media slots`}
                   className={`flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left text-sm sm:text-xs transition-colors duration-200 ease-out ${
                     active ? 'text-white' : 'text-ios-label2 hover:bg-ios-fill'
@@ -213,7 +252,20 @@ export default function MediaPanel({ media, send, prefs, onAir = false, muted = 
                     Cue
                   </button>
                   <button
-                    onClick={() => trigger(playing ? ACTION.pause : ACTION.play)}
+                    onClick={() => {
+                      if (playing) {
+                        cancelVerify()
+                        trigger(ACTION.pause)
+                      } else if (media.state === 'paused') {
+                        cancelVerify()
+                        trigger(ACTION.play)
+                      } else {
+                        // OBS's PLAY action only resumes a paused source — on
+                        // an ended/stopped one it's a silent no-op, so Replay
+                        // must go through the verified restart path.
+                        wake({ cued: false })
+                      }
+                    }}
                     title={
                       playing
                         ? 'Pause: freeze the video on the current frame — Play resumes from here'
@@ -230,7 +282,7 @@ export default function MediaPanel({ media, send, prefs, onAir = false, muted = 
                     {playing ? 'Pause' : media.state === 'ended' ? 'Replay' : 'Play'}
                   </button>
                   <button
-                    onClick={() => trigger(ACTION.restart)}
+                    onClick={() => wake({ cued: false })}
                     title="Restart: play immediately from 0:00 — use while the video is live on stream and needs to start over"
                     className="rounded-xl bg-ios-fill px-3 py-2 text-sm sm:text-xs font-semibold text-ios-blue transition-all duration-200 ease-out hover:bg-ios-fill2 active:scale-[0.98]"
                   >

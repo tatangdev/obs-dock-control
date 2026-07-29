@@ -9,7 +9,7 @@ import type {
   MediaStatus,
   ObsState,
 } from '../../shared/protocol'
-import { MEDIA_SCENE, PLAYABLE_KINDS } from './scenes'
+import { MEDIA_AUDIO_INPUT, MEDIA_SCENE, PLAYABLE_KINDS } from './scenes'
 import { AUDIO_INPUT, BACKGROUND_SCENE, OVERLAY_SCENE, RUNNING_TEXT_INPUT } from './overlay'
 
 export type ObsStatus = 'idle' | 'connecting' | 'connected' | 'error'
@@ -20,7 +20,7 @@ export type ObsCall = (request: string, params?: Record<string, unknown>) => Pro
 export type ObsQuery = <T = unknown>(request: string, params?: Record<string, unknown>) => Promise<T>
 
 /** Listen to raw OBS events; returns an unsubscribe function. */
-export type ObsSubscribe = (events: readonly (keyof OBSEventTypes)[], handler: () => void) => () => void
+export type ObsSubscribe = (events: readonly (keyof OBSEventTypes)[], handler: (data?: unknown) => void) => () => void
 
 /** Live peak level (dBFS) for one input; returns a stop function. */
 export type ObsWatchMeters = (inputName: string, handler: (peakDb: number) => void) => () => void
@@ -94,10 +94,13 @@ async function mediaSnapshot(obs: OBSWebSocket): Promise<MediaStatus | null> {
     // no MEDIA scene — setup incomplete
     return null
   }
-  // Every item except the nested overlay/background scenes is a media
-  // candidate the operator can put on the media slots.
+  // Every item except the nested overlay/background scenes and the hidden
+  // audio clone is a media candidate the operator can put on the media slots.
   const sources: MediaSourceInfo[] = items
-    .filter((i) => i.sourceName !== OVERLAY_SCENE && i.sourceName !== BACKGROUND_SCENE)
+    .filter(
+      (i) =>
+        i.sourceName !== OVERLAY_SCENE && i.sourceName !== BACKGROUND_SCENE && i.sourceName !== MEDIA_AUDIO_INPUT,
+    )
     .map((i) => ({
       id: Number(i.sceneItemId),
       name: String(i.sourceName),
@@ -183,8 +186,10 @@ async function snapshot(obs: OBSWebSocket): Promise<ObsState> {
     runningTextSnapshot(obs),
     audioTrackSnapshot(obs, AUDIO_INPUT),
   ])
-  // The media fader follows whichever source is active in the MEDIA scene
-  const mediaAudio = media?.active && media.playable ? await audioTrackSnapshot(obs, media.active) : null
+  // The media channel is the dedicated 'Media Audio' clone — the single
+  // audio path across all layouts. Null until the collection is unified
+  // (the checklist offers the migration); the fader row hides meanwhile.
+  const mediaAudio = media !== null ? await audioTrackSnapshot(obs, MEDIA_AUDIO_INPUT) : null
 
   return {
     audio: { input: audioIn, media: mediaAudio },

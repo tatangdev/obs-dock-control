@@ -66,8 +66,13 @@ export function useMediaBehaviors({ state, obsConnected, call, query, subscribe 
 
   useEffect(
     () =>
-      subscribe(['MediaInputPlaybackEnded'], () => {
+      subscribe(['MediaInputPlaybackEnded'], (data) => {
         if (!prefsRef.current.autoReturn || !prevLayoutRef.current) return
+        // Only the source that is actually on air may trigger the return — a
+        // background deck video reaching its end must not yank the program
+        // away mid-playback of the active one.
+        const ended = (data as { inputName?: string } | undefined)?.inputName
+        if (!ended || ended !== stateRef.current?.media?.active) return
         const sel = stateRef.current ? parseScene(stateRef.current.currentScene) : null
         if (sel?.mode === 'fullscreen' && sel.source === 'media') {
           void callRef.current('SetCurrentProgramScene', { sceneName: prevLayoutRef.current })
@@ -96,17 +101,46 @@ export function useMediaBehaviors({ state, obsConnected, call, query, subscribe 
     })
   }, [state])
 
-  // The clones are one logical audio channel with the active source, but mix
-  // their own audio — when the deck switches sources (or the dock starts),
-  // repoint them and copy the new source's volume/mute across so splits play
-  // at the loudness the Media fader shows. Also heals clones left muted by an
-  // interrupted cue gate.
+  // When the deck switches sources (or the dock starts), repoint the slot
+  // clones and the audio clone at the new source — heals any partial
+  // selectMediaSource failure without waiting for the checklist. On a real
+  // switch (not the dock's first look), honor the auto-play preference for
+  // the layout on air: without it the stream freezes on the new source's
+  // stopped frame until someone presses Play.
   const syncedActiveRef = useRef<string | null>(null)
   useEffect(() => {
     const active = state?.media?.active ?? null
     if (!obsConnected || active === null || active === syncedActiveRef.current) return
+    const isSwitch = syncedActiveRef.current !== null
     syncedActiveRef.current = active
     void syncMediaClones(query, active)
+    if (!isSwitch) return
+    const role = mediaRole(stateRef.current ? parseScene(stateRef.current.currentScene) : null)
+    const enabled = role === 'fullscreen' ? prefsRef.current.autoPlayFullscreen : prefsRef.current.autoPlayPip
+    const m = stateRef.current?.media
+    if (role === null || !enabled || !m?.playable || !m.file) return
+    void callRef.current('TriggerMediaInputAction', {
+      inputName: active,
+      mediaAction: 'OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART',
+    })
+  }, [obsConnected, state, query])
+
+  // Single-audio-path invariant: deck sources emit nothing directly — the
+  // 'Media Audio' clone (which taps their audio before mute) is the only
+  // audible media source, so transitions can never double the soundtrack.
+  // Every input kind is attempted (browser sources and captures carry audio
+  // too, not just video players); kinds without audio reject the call and
+  // are simply remembered as done. Nested scenes can't be muted — skipped.
+  // Gated on the unified channel existing (state.audio.media mirrors it), so
+  // an unmigrated collection keeps its sound until the repair runs.
+  const mutedDeckRef = useRef(new Set<string>())
+  useEffect(() => {
+    if (!obsConnected || !state?.media || state.audio.media === null) return
+    for (const source of state.media.sources) {
+      if (source.kind === 'scene' || mutedDeckRef.current.has(source.name)) continue
+      mutedDeckRef.current.add(source.name)
+      void query('SetInputMute', { inputName: source.name, inputMuted: true }).catch(() => undefined)
+    }
   }, [obsConnected, state, query])
 
   // Auto-play is app-driven — keep the OBS-side restart_on_activate off on
